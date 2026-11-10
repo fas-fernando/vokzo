@@ -1,0 +1,29 @@
+# Dependências pesadas
+node_modules/
+
+# Variáveis de ambiente e segredos
+.env
+.env.*
+!.env.example
+
+# Bancos de dados locais e arquivos SQLite
+*.sqlite
+*.sqlite3
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+database.json
+system_logs_fallback.json
+
+# Backups e arquivos temporários de upload
+*.bak*
+uploads/
+*.log
+npm-debug.log*
+
+# Sistema operacional e IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

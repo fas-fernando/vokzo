@@ -1,0 +1,22 @@
+{
+  "name": "alerta-vencimento",
+  "version": "1.0.0",
+  "description": "SaaS de Alerta de Vencimento de Produtos para Comércios e Mercadinhos",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "share": "node share.js",
+    "share:cf": "npx --yes untun tunnel --port 3000",
+    "tunnel": "npx --yes localtunnel --port 3000"
+  },
+  "keywords": [
+    "saas",
+    "mercado",
+    "vencimento",
+    "alerta",
+    "whatsapp",
+    "pix"
+  ],
+  "author": "Fas Alves Souza",
+  "license": "ISC"
+}
