@@ -1264,6 +1264,29 @@
                 </button>
               </div>
 
+              <!-- Taxa Dinâmica de Loja Excedente (OVERAGE_FEE) -->
+              <div class="bg-amber-50/70 border border-amber-200 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <label for="admin-overage-fee" class="block font-bold text-xs text-amber-950">
+                    Taxa de Loja Excedente (OVERAGE_FEE - R$)
+                  </label>
+                  <p class="text-[11px] text-amber-800/80 mt-0.5">
+                    Valor cobrado por cada loja ativa acima do limite da franquia do plano B2B na fatura PDF (Padrão: R$ 19,90).
+                  </p>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                  <span class="text-xs font-bold text-amber-900">R$</span>
+                  <input
+                    id="admin-overage-fee"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value="19.90"
+                    class="w-28 text-xs font-mono font-bold border border-amber-300 bg-white rounded-xl p-2 outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition text-slate-900"
+                  />
+                </div>
+              </div>
+
               <!-- Tabela de Planos B2B Cadastrados nas Configurações -->
               <div class="overflow-x-auto rounded-xl border border-slate-200 bg-white">
                 <table class="w-full text-left text-xs">
@@ -1291,7 +1314,7 @@
                   <span class="w-8 h-8 rounded-xl bg-slate-800 text-white flex items-center justify-center font-black text-sm shadow-xs">🛡️</span>
                   <div>
                     <h4 class="font-bold text-sm text-slate-900">6. Manutenção e Segurança</h4>
-                    <p class="text-[11px] text-slate-500">Gestão do ciclo de vida dos dados e salvaguarda do banco SQLite</p>
+                    <p class="text-[11px] text-slate-500">Gestão do ciclo de vida dos dados e salvaguarda do banco MySQL</p>
                   </div>
                 </div>
                 <span class="text-[10px] font-bold text-slate-700 bg-slate-200/80 px-2.5 py-0.5 rounded-full uppercase tracking-wider">Infraestrutura</span>
@@ -1306,7 +1329,7 @@
                         <span>🩺</span>
                         <span>Retenção e Purga Automática de Histórico</span>
                       </span>
-                      <span class="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-full">SQLite Auto-Purge</span>
+                      <span class="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-full">MySQL Auto-Purge</span>
                     </div>
                     <label class="block text-[11px] font-semibold text-slate-600 mb-1.5">
                       Limpar histórico de produtos resolvidos após X dias <span class="text-rose-500">*</span>
@@ -1492,7 +1515,7 @@
                 <span id="admin-logs-count-badge" class="text-[10px] font-bold bg-indigo-950 text-indigo-300 border border-indigo-700/60 px-2 py-0.5 rounded-full font-mono">0 registros</span>
               </div>
               <p class="text-slate-400 text-[11px] mt-0.5">
-                Histórico imutável em SQLite das ações executadas por Super Admin, Parceiros e Lojistas.
+                Histórico imutável em MySQL das ações executadas por Super Admin, Parceiros e Lojistas.
               </p>
             </div>
           </div>
@@ -2101,10 +2124,38 @@
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
             <h3 class="text-sm font-black text-white">Faturas Mensais & Invoices (B2B)</h3>
-            <p class="text-xs text-slate-400">Acompanhe as cobranças geradas com base nas lojas ativas da sua empresa de PDV.</p>
+            <p class="text-xs text-slate-400">Faturas emitidas automaticamente 10 dias antes do vencimento com base na franquia fixa + lojas excedentes.</p>
           </div>
           <div id="partner-fin-plan-rule" class="text-[11px] font-mono bg-slate-950/70 border border-slate-700 px-3 py-1.5 rounded-xl text-indigo-300">
             Franquia Fixa B2B: Mensalidade contratada
+          </div>
+        </div>
+
+        <!-- Card / Indicador de Fatura Aberta (Somente leitura ao vivo - estilo Nubank) -->
+        <div id="partner-open-invoice-card" class="rounded-2xl border border-violet-500/40 bg-gradient-to-r from-violet-950/60 via-slate-900/90 to-indigo-950/60 px-4 py-3.5 shadow-lg">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div class="flex items-start sm:items-center gap-3">
+              <div class="w-9 h-9 rounded-xl bg-violet-500/20 border border-violet-400/30 flex items-center justify-center shrink-0">
+                <span class="w-2.5 h-2.5 rounded-full bg-violet-400 animate-pulse"></span>
+              </div>
+              <div>
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-violet-500/20 text-violet-300 border border-violet-400/30">
+                    Fatura Aberta
+                  </span>
+                  <span id="partner-open-cycle-closing" class="text-[11px] text-slate-300 font-medium">
+                    Calculando data de fechamento...
+                  </span>
+                </div>
+                <p id="partner-open-cycle-detail" class="text-[11px] text-slate-400 mt-1">
+                  Leitura ao vivo do plano atual + excedentes reais (fatura gerada no histórico somente no fechamento).
+                </p>
+              </div>
+            </div>
+            <div class="sm:text-right shrink-0 border-t sm:border-t-0 border-slate-800 pt-2 sm:pt-0">
+              <span class="block text-[10px] uppercase tracking-wider text-violet-300 font-bold">Valor parcial estimado</span>
+              <span id="partner-open-cycle-amount" class="text-lg font-black font-mono text-white">R$ 0,00</span>
+            </div>
           </div>
         </div>
 
@@ -2182,6 +2233,25 @@
             <span class="text-[10px] text-slate-400 mt-1 block">A alteração atualiza a cota de lojas e a fatura estimada do parceiro imediatamente.</span>
           </div>
 
+          <div>
+            <label for="admin-assign-due-day" class="block font-bold text-slate-700 mb-1.5">
+              Dia de Vencimento <span class="text-rose-500">*</span>
+            </label>
+            <select
+              id="admin-assign-due-day"
+              name="dia_vencimento"
+              required
+              class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 font-bold text-slate-800 focus:bg-white focus:border-amber-500 focus:ring-2 focus:ring-amber-200 outline-none transition cursor-pointer"
+            >
+              <option value="5">Dia 05</option>
+              <option value="10">Dia 10</option>
+              <option value="15" selected>Dia 15</option>
+              <option value="20">Dia 20</option>
+              <option value="25">Dia 25</option>
+            </select>
+            <span class="text-[10px] text-slate-400 mt-1 block">Fecha automaticamente 10 dias antes deste dia de vencimento.</span>
+          </div>
+
           <div class="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
             <button 
               type="button" 
@@ -2202,6 +2272,54 @@
       </div>
     </div>
 
+    <!-- ======================================================== -->
+    <!-- MODAL: FINANCEIRO & BAIXA MANUAL DE FATURAS DO PARCEIRO  -->
+    <!-- ======================================================== -->
+    <div id="modal-admin-partner-invoices" onclick="if (event.target === this) closeAdminPartnerInvoicesModal()" class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm overflow-y-auto hidden">
+      <div class="bg-white rounded-3xl max-w-2xl w-full shadow-2xl p-5 sm:p-6 space-y-4 text-xs text-slate-700 animate-in fade-in zoom-in-95 border border-slate-100 my-auto max-h-[90vh] flex flex-col overflow-hidden">
+        <div class="flex items-center justify-between border-b border-slate-100 pb-3 shrink-0">
+          <div class="flex items-center gap-2.5">
+            <span class="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center justify-center font-bold text-base">💰</span>
+            <div>
+              <h3 class="font-extrabold text-sm text-slate-900">Financeiro &amp; Faturas do Parceiro B2B</h3>
+              <div class="flex items-center gap-2 mt-0.5">
+                <span id="admin-fin-partner-name" class="text-[11px] font-bold text-slate-600">--</span>
+                <span id="admin-fin-partner-id-badge" class="bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded font-mono font-black text-[10px]">--</span>
+              </div>
+            </div>
+          </div>
+          <button type="button" onclick="closeAdminPartnerInvoicesModal()" class="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg hover:bg-slate-100 text-base font-bold cursor-pointer">
+            ✕
+          </button>
+        </div>
+
+        <div class="overflow-x-auto overflow-y-auto rounded-2xl border border-slate-200 bg-white flex-1">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-slate-50 text-slate-500 uppercase text-[10px] tracking-wider border-b border-slate-200 sticky top-0">
+              <tr>
+                <th class="p-3">Código da Fatura</th>
+                <th class="p-3">Mês de Referência</th>
+                <th class="p-3">Valor Total</th>
+                <th class="p-3 text-center">Status</th>
+                <th class="p-3 text-right">Ação</th>
+              </tr>
+            </thead>
+            <tbody id="admin-partner-invoices-tbody" class="divide-y divide-slate-100 text-slate-800">
+              <tr>
+                <td colspan="5" class="p-6 text-center text-slate-400">Carregando faturas...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="pt-2 flex items-center justify-end border-t border-slate-100 shrink-0">
+          <button type="button" onclick="closeAdminPartnerInvoicesModal()" class="px-4 py-2 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-700 font-bold text-xs transition cursor-pointer">
+            Fechar
+          </button>
+        </div>
+      </div>
+    </div>
+
     <div id="modal-create-partner" class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm overflow-y-auto hidden">
       <div class="bg-white rounded-3xl max-w-md w-full shadow-2xl p-5 sm:p-6 space-y-4 text-xs text-slate-700 animate-in fade-in zoom-in-95 border border-slate-100 my-auto max-h-[92vh] flex flex-col overflow-hidden">
         <!-- Topo Fixo do Modal -->
@@ -2209,8 +2327,8 @@
           <div class="flex items-center gap-2.5">
             <span class="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center justify-center font-bold text-base">🤝</span>
             <div>
-              <h3 class="font-extrabold text-sm text-slate-900">Novo Parceiro (Revendedor B2B)</h3>
-              <p class="text-[11px] text-slate-500">Cadastro direto de empresa desenvolvedora de PDV</p>
+              <h3 id="modal-create-partner-title" class="font-extrabold text-sm text-slate-900">Novo Parceiro (Revendedor B2B)</h3>
+              <p id="modal-create-partner-subtitle" class="text-[11px] text-slate-500">Cadastro direto de empresa desenvolvedora de PDV</p>
             </div>
           </div>
           <button type="button" onclick="closeCreatePartnerModal()" class="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg hover:bg-slate-100 text-base font-bold cursor-pointer transition">
@@ -2220,6 +2338,7 @@
 
         <!-- Formulário Estruturado: Corpo Rolável + Rodapé Fixo -->
         <form id="form-create-partner" onsubmit="handleCreatePartnerSubmit(event)" class="flex flex-col flex-1 min-h-0 overflow-hidden">
+          <input type="hidden" id="partner-edit-id" value="" />
           <!-- Corpo com Scroll Interno (overflow-y-auto) -->
           <div class="flex-1 overflow-y-auto pr-1 sm:pr-2 space-y-3.5 overscroll-contain">
             <!-- 1. Nome do Parceiro -->
@@ -2284,7 +2403,7 @@
                 class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 font-mono text-center tracking-widest text-base font-bold text-slate-800 focus:bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none transition"
                 oninput="this.value = this.value.replace(/\D/g, '').slice(0, 4)"
               />
-              <p class="text-[10px] text-slate-400 mt-1">Senha numérica de 4 dígitos para o parceiro acessar seu portal.</p>
+              <p id="partner-create-pin-hint" class="text-[10px] text-slate-400 mt-1">Senha numérica de 4 dígitos para o parceiro acessar seu portal.</p>
             </div>
 
             <!-- 5. Email -->
@@ -2315,6 +2434,26 @@
                 <option value="plano_enterprise">Enterprise (Até 500 Lojas) — R$ 1.990,00 / mês</option>
               </select>
               <p class="text-[10px] text-slate-400 mt-1">Vincula o parceiro a um pacote com limite de Lojas/PDVs e fatura mensal fixa.</p>
+            </div>
+
+            <!-- 7. Dia de Vencimento da Fatura (Por Parceiro) -->
+            <div>
+              <label for="partner-create-due-day" class="block font-bold text-slate-700 mb-1">
+                Dia de Vencimento <span class="text-rose-500">*</span>
+              </label>
+              <select
+                id="partner-create-due-day"
+                name="dia_vencimento"
+                required
+                class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 font-bold text-slate-800 focus:bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none transition cursor-pointer"
+              >
+                <option value="5">Dia 05</option>
+                <option value="10">Dia 10</option>
+                <option value="15" selected>Dia 15</option>
+                <option value="20">Dia 20</option>
+                <option value="25">Dia 25</option>
+              </select>
+              <p class="text-[10px] text-slate-400 mt-1">O fechamento e geração automática da fatura ocorrem 10 dias antes deste vencimento.</p>
             </div>
           </div>
 
@@ -3118,7 +3257,7 @@
     <div id="modal-paywall" class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm overflow-y-auto hidden">
       <div class="bg-white rounded-3xl max-w-md w-full shadow-2xl border border-amber-300 overflow-hidden my-auto max-h-[92vh] flex flex-col">
         <div class="bg-gradient-to-r from-amber-500 to-orange-500 text-white p-3.5 flex justify-between items-center">
-          <h2 class="text-sm sm:text-base font-black" id="paywall-header-title">Alerta Vencimento PRO</h2>
+          <h2 class="text-sm sm:text-base font-black" id="paywall-header-title">VOKZO PRO</h2>
           <button type="button" onclick="closePaywallModal()" class="text-white hover:text-amber-200 text-xl font-bold leading-none cursor-pointer">&times;</button>
         </div>
         <div class="p-3.5 space-y-3 text-xs">
@@ -3207,9 +3346,9 @@
 
         <!-- Corpo com Scroll Interno para telas menores e acesso total aos botões inferiores -->
         <div class="p-3.5 space-y-2.5 text-xs overflow-y-auto flex-1 max-h-[calc(90vh-65px)]">
-          <!-- Seletor Rápido de Plano (para Lojistas) -->
+          <!-- Seletor Rápido de Plano (Vinculado ao estado selectedPlanCycle) -->
           <div id="pix-selector-tabs" class="flex items-center justify-between bg-slate-100 p-1 rounded-xl text-[11px] font-bold">
-            <button type="button" onclick="selectPaywallCycle('monthly'); openPixModal();" id="pix-tab-monthly" class="flex-1 py-1 text-center rounded-lg bg-white text-indigo-800 shadow-xs transition cursor-pointer">
+            <button type="button" onclick="selectPaywallCycle('monthly'); openPixModal();" id="pix-tab-monthly" class="flex-1 py-1 text-center rounded-lg bg-white text-indigo-800 shadow-xs transition cursor-pointer font-black">
               Mensal (<span id="pix-tab-monthly-val">R$ 49,90</span>)
             </button>
             <button type="button" onclick="selectPaywallCycle('annual'); openPixModal();" id="pix-tab-annual" class="flex-1 py-1 text-center rounded-lg text-slate-600 hover:text-slate-900 transition cursor-pointer">
@@ -3217,11 +3356,11 @@
             </button>
           </div>
 
-          <!-- Card de Valor e Descrição -->
+          <!-- Card de Valor e Descrição Dinâmicos (Sincronizados com a aba Mensal/Anual) -->
           <div class="flex items-center justify-between bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-2xl px-3 py-2">
             <div>
               <span class="font-black text-slate-900 text-base block font-mono" id="pix-amount-label">R$ 49,90</span>
-              <span class="text-[10px] text-emerald-800 font-bold" id="pix-plan-desc">Plano PRO Ilimitado</span>
+              <span class="text-[10px] text-emerald-800 font-bold" id="pix-plan-desc">VOKZO PRO Mensal</span>
             </div>
             <span class="inline-flex items-center gap-1 bg-emerald-600 text-white text-[10px] font-black px-2.5 py-1 rounded-full shadow-2xs">
               <span class="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span>
@@ -4463,11 +4602,13 @@
     let partnerStoresPageSize = 10;
 
     // Salva localmente e sincroniza em background com o servidor central
-    function saveState() {
+    function saveState(opts = {}) {
       try {
         if (window.localStorage) window.localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
       } catch (e) {}
-      syncToServer();
+      if (!opts || !opts.skipServerSync) {
+        syncToServer();
+      }
     }
 
     // Envia os dados para a API do servidor (PC / Smartphone sincronizados)
@@ -4486,8 +4627,11 @@
       } catch (e) {}
     }
 
-    // Puxa os dados atualizados do servidor central (permite ver lojistas criados no celular direto no PC)
+    // Puxa os dados atualizados do servidor central (MySQL)
+    let isSyncingFromServer = false;
     async function syncFromServer() {
+      if (isSyncingFromServer) return;
+      isSyncingFromServer = true;
       try {
         const res = await fetch('/api/state?t=' + Date.now(), {
           headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate', 'Pragma': 'no-cache' }
@@ -4515,8 +4659,34 @@
         }
       } catch (e) {
         console.warn('Sync server:', e);
+      } finally {
+        isSyncingFromServer = false;
       }
     }
+
+    async function fetchAdminMerchantsFromServer() {
+      try {
+        const res = await fetch('/api/admin/merchants?t=' + Date.now(), {
+          headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate', 'bypass-tunnel-reminder': 'true', 'Bypass-Tunnel-Reminder': '1' }
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data && data.success && data.merchantsMap && typeof data.merchantsMap === 'object') {
+          appState.merchants = data.merchantsMap;
+          if (window.localStorage) {
+            try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(appState)); } catch (e) {}
+          }
+          if (typeof updateAdminMerchantsDashboardUi === 'function') {
+            updateAdminMerchantsDashboardUi();
+          } else if (typeof renderAdminStoresList === 'function') {
+            renderAdminStoresList();
+          }
+        }
+      } catch (err) {
+        console.warn('Falha ao buscar lojistas do MySQL:', err);
+      }
+    }
+    window.fetchAdminMerchantsFromServer = fetchAdminMerchantsFromServer;
 
     // Sincroniza logo ao abrir a página
     syncFromServer();
@@ -4782,11 +4952,12 @@
           const data = await res.json();
           if (res.ok && data.success) {
             appState.currentUser = { ...data.user, role: 'admin', plano: 'master' };
-            saveState();
+            saveState({ skipServerSync: true });
             closePhonePinLoginModal();
             history.pushState(null, '', data.redirect || '/admin');
+            await syncFromServer();
             renderUI();
-            showToast('🛡️ Acesso Master autorizado com sucesso!');
+            showToast('🛡️ Bem-vindo ao Painel do Administrador Master!');
             return true;
           }
         } catch (netErr) {}
@@ -4853,9 +5024,10 @@
           // REDIRECIONAMENTO INTELIGENTE CONFORME ROLE
           if (role === 'LOJISTA') {
             appState.currentUser = { ...data.user, role: 'merchant' };
-            saveState();
+            saveState({ skipServerSync: true });
             closePhonePinLoginModal();
             history.pushState(null, '', data.redirect || '/dashboard-lojista');
+            await syncFromServer();
             renderUI();
             showToast(`✅ Conectado com sucesso! Loja: ${data.user.name || clean}`);
             return false;
@@ -4863,9 +5035,10 @@
 
           if (role === 'REPOSITOR') {
             appState.currentUser = { ...data.user, role: 'repositor' };
-            saveState();
+            saveState({ skipServerSync: true });
             closePhonePinLoginModal();
             history.pushState(null, '', data.redirect || '/leitor');
+            await syncFromServer();
             renderUI();
             openUniversalScanner();
             showToast(`📦 Acesso Repositor liberado! Loja: ${data.user.storeName || 'Estoque'}`);
@@ -4874,9 +5047,10 @@
 
           if (role === 'PARCEIRO') {
             appState.currentUser = { ...data.user, role: 'partner' };
-            saveState();
+            saveState({ skipServerSync: true });
             closePhonePinLoginModal();
             history.pushState(null, '', data.redirect || '/dashboard-parceiro');
+            await syncFromServer();
             renderUI();
             showToast(`🤝 Bem-vindo ao Portal do Parceiro PDV! ${data.user.name || ''}`);
             return false;
@@ -4884,9 +5058,10 @@
 
           if (role === 'ADMIN') {
             appState.currentUser = { ...data.user, role: 'admin' };
-            saveState();
+            saveState({ skipServerSync: true });
             closePhonePinLoginModal();
             history.pushState(null, '', data.redirect || '/admin');
+            await syncFromServer();
             renderUI();
             showToast('🛡️ Bem-vindo ao Painel do Administrador Master!');
             return false;
@@ -5237,16 +5412,24 @@
       };
       appState.merchants[clean] = merchantData;
 
-      // Salva diretamente na API do servidor para sincronização instantânea
+      // Salva diretamente na API do servidor (MySQL) para sincronização instantânea
       try {
-        fetch('/api/register-merchant', {
+        const regRes = await fetch('/api/register-merchant', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'bypass-tunnel-reminder': 'true', 'Bypass-Tunnel-Reminder': '1' },
           body: JSON.stringify({ name, phone: clean, pin, plano })
-        }).catch(err => console.warn('Erro ao chamar /api/register-merchant:', err));
-      } catch (err) {}
+        });
+        if (regRes.ok) {
+          const regData = await regRes.json();
+          if (regData && regData.merchant) {
+            appState.merchants[clean] = regData.merchant;
+          }
+        }
+      } catch (err) {
+        console.warn('Erro ao chamar /api/register-merchant:', err);
+      }
 
-      saveState();
+      saveState({ skipServerSync: true });
       renderUI();
 
       // Limpa os campos do formulário e fecha o modal
@@ -5301,7 +5484,7 @@
       if (appState.merchants[clean]) appState.merchants[clean].status = nextStatus;
       if (appState.merchants[phone]) appState.merchants[phone].status = nextStatus;
 
-      // Chama endpoint backend para persistência segura no SQLite/database.json
+      // Chama endpoint backend para persistência segura no MySQL
       try {
         const res = await fetch('/api/admin/merchants/toggle-status', {
           method: 'PATCH',
@@ -5405,7 +5588,12 @@
           appState.currentUser.proExpiresAt = m.proExpiresAt;
         }
 
-        saveState();
+        fetch('/api/admin/merchants/update', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', 'bypass-tunnel-reminder': 'true', 'Bypass-Tunnel-Reminder': '1' },
+          body: JSON.stringify({ phone: clean, plano: m.plano, planoCiclo: m.planoCiclo, status: m.status, proExpiresAt: m.proExpiresAt })
+        }).catch(() => {});
+        saveState({ skipServerSync: true });
         renderUI();
         if (isAnnual) {
           showToast(`🌟 Licença PRO ANUAL (1 Ano / 365 dias) ativada para ${m.name}!`);
@@ -5424,7 +5612,12 @@
           delete appState.currentUser.proExpiresAt;
         }
 
-        saveState();
+        fetch('/api/admin/merchants/update', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', 'bypass-tunnel-reminder': 'true', 'Bypass-Tunnel-Reminder': '1' },
+          body: JSON.stringify({ phone: clean, plano: 'free', planoCiclo: null, proExpiresAt: null })
+        }).catch(() => {});
+        saveState({ skipServerSync: true });
         renderUI();
         showToast(`🎁 Plano de ${m.name} revertido para Trial!`);
       }
@@ -5484,6 +5677,15 @@ function handleSaveGlobalSettings(e) {
           headers: { 'Content-Type': 'application/json', 'bypass-tunnel-reminder': 'true', 'Bypass-Tunnel-Reminder': '1' },
           body: JSON.stringify({ price: appState.globalSettings.partnerTokenPrice })
         }).catch(e => console.warn('Falha silenciosa ao salvar preco do token:', e));
+      }
+      if (document.getElementById('admin-overage-fee')) {
+        const parsedOverage = parseFloat(document.getElementById('admin-overage-fee').value);
+        appState.globalSettings.overageFee = (!isNaN(parsedOverage) && parsedOverage >= 0) ? parsedOverage : 19.90;
+        fetch('/api/admin/overage-fee', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'bypass-tunnel-reminder': 'true', 'Bypass-Tunnel-Reminder': '1' },
+          body: JSON.stringify({ overageFee: appState.globalSettings.overageFee })
+        }).catch(e => console.warn('Falha silenciosa ao salvar OVERAGE_FEE:', e));
       }
       // Configurações do PIX Estático (Recebedor / Concierge)
       if (document.getElementById('admin-pix-key-type')) {
@@ -6074,22 +6276,24 @@ let currentCheckoutOptions = null;
         }
         planTitle = 'Modulo XML NF-e';
       } else if (serviceType === 'merchant_pro_annual') {
+        selectedPlanCycle = 'annual';
         if (!finalAmount || finalAmount <= 0) {
           finalAmount = parseFloat(gs.pixAmountAnnual || 199.00);
         }
-        planTitle = 'Alerta PRO Anual';
+        planTitle = 'VOKZO PRO Anual';
       } else if (serviceType === 'merchant_pro_monthly') {
+        selectedPlanCycle = 'monthly';
         if (!finalAmount || finalAmount <= 0) {
           finalAmount = parseFloat(gs.pixAmount || 49.90);
         }
-        planTitle = 'Alerta PRO Mensal';
+        planTitle = 'VOKZO PRO Mensal';
       } else if (serviceType === 'partner_invoice') {
         if (!planTitle) planTitle = 'Fatura B2B ' + (opts.invoiceId || '');
       } else {
         if (!finalAmount || finalAmount <= 0) {
           finalAmount = parseFloat(gs.pixAmount || 49.90);
         }
-        if (!planTitle) planTitle = 'Alerta Vencimento PRO';
+        if (!planTitle) planTitle = 'VOKZO PRO';
       }
 
       currentCheckoutOptions = {
@@ -6134,12 +6338,19 @@ let currentCheckoutOptions = null;
         instEl.innerText = gs.pixInstructions || 'Após o pagamento, seu acesso será liberado em instantes pelo administrador.';
       }
 
-      // Alternador mensal/anual no topo do modal (exibe somente para planos PRO)
+      // Alternador mensal/anual no topo do modal (exibe somente para planos PRO e sincroniza valores dos botões)
       const tabsEl = document.getElementById('pix-selector-tabs');
       if (tabsEl) {
         if (serviceType.startsWith('merchant_pro')) {
           tabsEl.classList.remove('hidden');
-          const isAnnual = (serviceType === 'merchant_pro_annual');
+          const monthlyCfg = parseFloat(gs.pixAmount || 49.90);
+          const annualCfg = parseFloat(gs.pixAmountAnnual || 199.00);
+          const tabMVal = document.getElementById('pix-tab-monthly-val');
+          const tabAVal = document.getElementById('pix-tab-annual-val');
+          if (tabMVal) tabMVal.innerText = 'R$ ' + monthlyCfg.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+          if (tabAVal) tabAVal.innerText = 'R$ ' + annualCfg.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+          const isAnnual = (selectedPlanCycle === 'annual' || serviceType === 'merchant_pro_annual');
           const tabM = document.getElementById('pix-tab-monthly');
           const tabA = document.getElementById('pix-tab-annual');
           if (tabM && tabA) {
@@ -6276,8 +6487,8 @@ let currentCheckoutOptions = null;
         type: isAnnual ? 'merchant_pro_annual' : 'merchant_pro_monthly',
         amount: amount,
         phone: user.phone || '',
-        nome_plano: isAnnual ? 'Alerta Vencimento PRO Anual' : 'Alerta Vencimento PRO Mensal',
-        description: isAnnual ? 'Alerta Vencimento PRO Anual' : 'Alerta Vencimento PRO Mensal'
+        nome_plano: isAnnual ? 'VOKZO PRO Anual' : 'VOKZO PRO Mensal',
+        description: isAnnual ? 'VOKZO PRO Anual' : 'VOKZO PRO Mensal'
       });
     }
     window.openPixModal = openPixModal;
@@ -6313,11 +6524,11 @@ let currentCheckoutOptions = null;
     window.confirmPaymentDirectly = confirmPaymentDirectly;
 
     
-    // --- SUPORTE À ROTA SECRETA /vokz-boss (SUPER ADMIN) ---
+    // --- SUPORTE À ROTA SECRETA /vokzo-boss e /vokz-boss (SUPER ADMIN) ---
     function isSecretAdminRoute() {
       const p = (window.location.pathname || '').toLowerCase();
       const h = (window.location.hash || '').toLowerCase();
-      return p.includes('vokz-boss') || h.includes('vokz-boss');
+      return p.includes('vokzo-boss') || h.includes('vokzo-boss') || p.includes('vokz-boss') || h.includes('vokz-boss');
     }
     window.isSecretAdminRoute = isSecretAdminRoute;
 
@@ -6359,9 +6570,10 @@ let currentCheckoutOptions = null;
         const data = await res.json();
         if (res.ok && data.success) {
           appState.currentUser = { ...data.user, role: 'admin', plano: 'master' };
-          saveState();
+          saveState({ skipServerSync: true });
           showToast('🛡️ Acesso Master autorizado com sucesso!');
           history.pushState(null, '', '/admin');
+          await syncFromServer();
           renderUI();
           return true;
         } else {
@@ -6889,7 +7101,8 @@ let currentCheckoutOptions = null;
           cycle: isAnnual ? 'annual' : 'monthly'
         };
       }
-      const createdDate = new Date(m.createdAt || '2026-11-05');
+      let createdDate = new Date(m.createdAt || m.trialStartDate || '2026-11-05');
+      if (isNaN(createdDate.getTime())) createdDate = new Date('2026-11-05');
       const now = new Date();
       const trialDaysConfig = parseInt((appState.globalSettings && appState.globalSettings.trialDays) || 14, 10);
       const trialDurationMs = trialDaysConfig * 24 * 60 * 60 * 1000;
@@ -6978,6 +7191,7 @@ let currentCheckoutOptions = null;
         if (dashBtn) dashBtn.className = 'px-4 py-2 rounded-xl text-xs font-extrabold transition flex items-center gap-2 bg-indigo-600 text-white shadow-xs cursor-pointer shrink-0';
         if (btnMer) btnMer.classList.remove('hidden');
         if (btnPar) btnPar.classList.add('hidden');
+        fetchAdminMerchantsFromServer();
       } else if (tab === 'settings') {
         if (settContent) settContent.classList.remove('hidden');
         if (settBtn) settBtn.className = 'px-4 py-2 rounded-xl text-xs font-extrabold transition flex items-center gap-2 bg-indigo-600 text-white shadow-xs cursor-pointer shrink-0';
@@ -7229,6 +7443,10 @@ let currentCheckoutOptions = null;
       if (document.getElementById('admin-partner-token-price')) {
         document.getElementById('admin-partner-token-price').value = (appState.globalSettings.partnerTokenPrice !== undefined) ? appState.globalSettings.partnerTokenPrice : 29.90;
       }
+      if (document.getElementById('admin-overage-fee')) {
+        const feeVal = (appState.globalSettings && appState.globalSettings.overageFee !== undefined) ? parseFloat(appState.globalSettings.overageFee) : 19.90;
+        document.getElementById('admin-overage-fee').value = (!isNaN(feeVal) ? feeVal : 19.90).toFixed(2);
+      }
       renderAdminPartners();
       // Preenche configurações de PIX Estático Oficial
       if (document.getElementById('admin-pix-key-type')) {
@@ -7299,6 +7517,11 @@ let currentCheckoutOptions = null;
         document.getElementById('admin-tpl-expiry').value = appState.globalSettings.tplExpiry || "🚨 *ALERTA DE VENCIMENTO*\nO item *{nome_produto}* está a *{dias_vencer} dias* do vencimento. Acelere a saída para evitar prejuízos!";
       }
 
+      updateAdminMerchantsDashboardUi();
+      fetchAdminMerchantsFromServer();
+    }
+
+    function updateAdminMerchantsDashboardUi() {
       const merchantsList = Object.values(appState.merchants || {});
       const totalStores = merchantsList.length;
       const proStores = merchantsList.filter(m => m.plano === 'premium').length;
@@ -7308,28 +7531,40 @@ let currentCheckoutOptions = null;
       merchantsList.forEach(m => {
         if (m.plano !== 'premium') {
           const info = getMerchantTrialInfo(m);
-          if (info.status === 'trial_active') activeTrials++;
+          if (info.status === 'trial_active' || info.status === 'trial_tolerance') activeTrials++;
           else expiredTrials++;
         }
       });
 
       const totalProducts = (appState.products || []).filter(p => p.status === 'ativo').length;
-      const monthlyRevenue = (proStores * parseFloat(appState.globalSettings.pixAmount || 49.90)).toFixed(2);
+      const monthlyRevenue = (proStores * parseFloat((appState.globalSettings && appState.globalSettings.pixAmount) || 49.90)).toFixed(2);
 
-      document.getElementById('admin-stat-stores').innerHTML = totalStores + ' <span class="text-xs text-indigo-600 font-bold">' + (totalStores === 1 ? 'loja' : 'lojas') + '</span>';
-      document.getElementById('admin-stat-stores-sub').innerText = totalStores + ' no catálogo do SaaS';
-
-      document.getElementById('admin-stat-pro').innerHTML = proStores + ' <span class="text-xs text-slate-500 font-normal">(R$ ' + monthlyRevenue.replace('.', ',') + '/mês)</span>';
+      if (document.getElementById('admin-stat-stores')) {
+        document.getElementById('admin-stat-stores').innerHTML = totalStores + ' <span class="text-xs text-indigo-600 font-bold">' + (totalStores === 1 ? 'loja' : 'lojas') + '</span>';
+      }
+      if (document.getElementById('admin-stat-stores-sub')) {
+        document.getElementById('admin-stat-stores-sub').innerText = totalStores + ' no catálogo do SaaS';
+      }
+      if (document.getElementById('admin-stat-pro')) {
+        document.getElementById('admin-stat-pro').innerHTML = proStores + ' <span class="text-xs text-slate-500 font-normal">(R$ ' + monthlyRevenue.replace('.', ',') + '/mês)</span>';
+      }
       const pctPro = totalStores > 0 ? Math.round((proStores / totalStores) * 100) : 0;
-      document.getElementById('admin-stat-pro-sub').innerText = pctPro + '% de conversão PRO';
-
-      document.getElementById('admin-stat-trials').innerHTML = activeTrials + ' <span class="text-xs text-amber-600 font-bold">ativos</span> ' + (expiredTrials > 0 ? '<span class="text-xs text-rose-600 font-bold">(' + expiredTrials + ' vencidos)</span>' : '');
-      document.getElementById('admin-stat-trials-sub').innerText = '14 dias • ' + totalProducts + ' produtos totais';
-
-      document.getElementById('admin-badge-total-merchants').innerText = totalStores + ' ' + (totalStores === 1 ? 'loja' : 'lojas');
+      if (document.getElementById('admin-stat-pro-sub')) {
+        document.getElementById('admin-stat-pro-sub').innerText = pctPro + '% de conversão PRO';
+      }
+      if (document.getElementById('admin-stat-trials')) {
+        document.getElementById('admin-stat-trials').innerHTML = activeTrials + ' <span class="text-xs text-amber-600 font-bold">ativos</span> ' + (expiredTrials > 0 ? '<span class="text-xs text-rose-600 font-bold">(' + expiredTrials + ' vencidos)</span>' : '');
+      }
+      if (document.getElementById('admin-stat-trials-sub')) {
+        document.getElementById('admin-stat-trials-sub').innerText = '14 dias • ' + totalProducts + ' produtos totais';
+      }
+      if (document.getElementById('admin-badge-total-merchants')) {
+        document.getElementById('admin-badge-total-merchants').innerText = totalStores + ' ' + (totalStores === 1 ? 'loja' : 'lojas');
+      }
 
       renderAdminStoresList();
     }
+    window.updateAdminMerchantsDashboardUi = updateAdminMerchantsDashboardUi;
 
     
     // Controle do Kebab Menu (Dropdown dos Lojistas)
@@ -7360,6 +7595,7 @@ let currentCheckoutOptions = null;
 
     document.addEventListener('click', () => {
       closeAllMerchantKebabMenus();
+      if (typeof closeAllPartnerKebabMenus === 'function') closeAllPartnerKebabMenus();
     });
 
     function renderAdminStoresList() {
@@ -9320,7 +9556,7 @@ let currentCheckoutOptions = null;
           localStorage.removeItem(OFFLINE_QUEUE_KEY);
           updateOfflineSyncUI();
           showToast('🔄 Sincronização offline concluída com sucesso!');
-          console.log(`✅ [SINCRONIZAÇÃO COMPLETA]: ${syncedCount} produtos gravados no SQLite.`);
+          console.log(`✅ [SINCRONIZAÇÃO COMPLETA]: ${syncedCount} produtos gravados no MySQL.`);
           renderUI();
         } else {
           console.warn('Servidor respondeu com status não-200 ao sincronizar lote:', res.status);
@@ -9988,7 +10224,7 @@ let currentCheckoutOptions = null;
       batchToInsert.forEach(p => appState.products.unshift(p));
       saveState();
 
-      // 3. Batch Insert no SQLite
+      // 3. Batch Insert no MySQL
       try {
         await fetch('/api/products/batch', {
           method: 'POST',
@@ -10116,7 +10352,12 @@ let currentCheckoutOptions = null;
         m.plano = (m.plano === 'free' || m.plano === 'trial') ? 'automacao' : m.plano;
       }
 
-      saveState();
+      fetch('/api/admin/merchants/update', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'bypass-tunnel-reminder': 'true', 'Bypass-Tunnel-Reminder': '1' },
+        body: JSON.stringify({ phone: clean, hasXmlImport: m.hasXmlImport, plano: m.plano })
+      }).catch(() => {});
+      saveState({ skipServerSync: true });
       renderAdminStoresList();
 
       const statusMsg = newState ? 'LIBERADA (Plano Automação)' : 'BLOQUEADA';
@@ -10161,7 +10402,7 @@ let currentCheckoutOptions = null;
           const data = await res.json();
           if (data && data.success && Array.isArray(data.repositores)) {
             if (!appState.repositores) appState.repositores = {};
-            // Remove entradas antigas desta loja antes de popular com os registros oficiais do SQLite
+            // Remove entradas antigas desta loja antes de popular com os registros oficiais do MySQL
             Object.keys(appState.repositores).forEach(k => {
               if (cleanDigits(appState.repositores[k] && appState.repositores[k].tenantId) === tenantId) {
                 delete appState.repositores[k];
@@ -10260,7 +10501,7 @@ let currentCheckoutOptions = null;
           if (pinInp) pinInp.value = '';
           if (nameInp) nameInp.value = '';
 
-          // Busca obrigatoriamente a lista atualizada direto do banco SQLite
+          // Busca obrigatoriamente a lista atualizada direto do banco MySQL
           await fetchTeamRepositoresFromServer(false);
           showToast(`✅ Repositor ${clean} salvo no banco com sucesso!`);
 
@@ -10928,11 +11169,15 @@ let currentCheckoutOptions = null;
           const data = await res.json();
           partnerDashboardData = data;
           window.partnerDashboardData = data;
-          if (data && data.partner && appState.currentUser && String(appState.currentUser.role || '').toLowerCase() === 'partner') {
+          if (data && data.partner && appState.currentUser && String(appState.currentUser.role || '').toLowerCase().includes('parc')) {
             appState.currentUser.plano_id = data.partner.plano_id || appState.currentUser.plano_id;
             appState.currentUser.nome_plano = data.partner.nome_plano || appState.currentUser.nome_plano;
             appState.currentUser.limite_lojas = data.partner.limite_lojas || appState.currentUser.limite_lojas;
             appState.currentUser.valor_mensal = data.partner.valor_mensal !== undefined ? data.partner.valor_mensal : appState.currentUser.valor_mensal;
+            appState.currentUser.dia_vencimento = data.partner.dia_vencimento || appState.currentUser.dia_vencimento || 15;
+          }
+          if (data && data.partner && appState.currentUser) {
+            appState.currentUser.dia_vencimento = data.partner.dia_vencimento || appState.currentUser.dia_vencimento || 15;
           }
           applyPartnerDashboardData(data);
           return;
@@ -10941,7 +11186,7 @@ let currentCheckoutOptions = null;
         console.warn('API partner dashboard offline, carregando estado local real', err);
       }
 
-      // Fallback local preservando o plano do usuário autenticado
+      // Fallback local preservando o plano e dia de vencimento do usuário autenticado
       const localPartner = (appState.partners && appState.partners[partnerId]) || {
         id: partnerId || 'PARC-001',
         name: (appState.currentUser && appState.currentUser.name) || 'Parceiro PDV',
@@ -10951,14 +11196,18 @@ let currentCheckoutOptions = null;
         nome_plano: (appState.currentUser && appState.currentUser.nome_plano) || 'Starter',
         limite_lojas: (appState.currentUser && (appState.currentUser.limite_lojas || appState.currentUser.limite_tokens)) || 50,
         valor_mensal: (appState.currentUser && appState.currentUser.valor_mensal !== undefined) ? appState.currentUser.valor_mensal : 390.00,
+        dia_vencimento: (appState.currentUser && (appState.currentUser.dia_vencimento || appState.currentUser.diaVencimento)) || 15,
         valorPorLoja: (appState.globalSettings && appState.globalSettings.partnerTokenPrice) || 29.90
       };
 
       const localStores = (appState.partnerStores && appState.partnerStores[partnerId]) || [];
-      const activeStores = localStores.filter(s => s.status === 'ativo');
+      const activeStores = localStores.filter(s => s.status === 'ativo' || !s.status);
       const totalReqs = localStores.reduce((sum, s) => sum + (parseInt(s.requisicoesMes) || 0), 0);
-      const valUnit = localPartner.valorPorLoja || 29.90;
-      const faturaEstimada = activeStores.length * valUnit;
+      const localPlanLimit = parseInt(localPartner.limite_lojas || localPartner.limite_tokens || 50, 10);
+      const localPlanPrice = parseFloat(localPartner.valor_mensal !== undefined ? localPartner.valor_mensal : 390.00);
+      const localOverageFee = parseFloat((appState.globalSettings && appState.globalSettings.overageFee) || 19.90);
+      const localExcedentes = Math.max(0, activeStores.length - localPlanLimit);
+      const faturaEstimada = Number((localPlanPrice + (localExcedentes * localOverageFee)).toFixed(2));
 
       partnerDashboardData = {
         partner: localPartner,
@@ -11021,18 +11270,68 @@ let currentCheckoutOptions = null;
       const kpiPct = document.getElementById('partner-kpi-contract-pct');
       const kpiProgress = document.getElementById('partner-kpi-progress-bar');
 
-      const pctUsage = planLimit > 0 ? Math.min(100, Math.round((totalStores / planLimit) * 100)) : 0;
+      const rawPctUsage = planLimit > 0 ? Math.round((totalStores / planLimit) * 100) : 0;
 
       if (kpiPlanName) kpiPlanName.innerText = `Plano ${planName}`;
       if (kpiPlanPrice) kpiPlanPrice.innerText = `R$ ${planPriceFormatted}/mês`;
-      if (kpiUsage) kpiUsage.innerHTML = `Uso: <strong class="text-emerald-400 font-bold">${totalStores}</strong> / <strong>${planLimit}</strong> Tokens`;
-      if (kpiPct) kpiPct.innerText = `${pctUsage}% em uso`;
-      if (kpiProgress) kpiProgress.style.width = `${pctUsage}%`;
+      if (kpiUsage) kpiUsage.innerHTML = `Uso: <strong class="${rawPctUsage > 100 ? 'text-amber-400' : 'text-emerald-400'} font-bold">${totalStores}</strong> / <strong>${planLimit}</strong> Tokens`;
+      if (kpiPct) {
+        kpiPct.innerText = `${rawPctUsage}% em uso`;
+        kpiPct.className = rawPctUsage > 100
+          ? 'text-[10px] text-rose-300 font-bold bg-rose-950/70 border border-rose-700/50 px-1.5 py-0.5 rounded'
+          : 'text-[10px] text-emerald-400 font-bold bg-emerald-950/60 border border-emerald-700/40 px-1.5 py-0.5 rounded';
+      }
+      if (kpiProgress) kpiProgress.style.width = `${Math.min(100, rawPctUsage)}%`;
 
-      // Atualiza texto explicativo na aba Financeiro
+      // Atualiza texto explicativo e indicador ao vivo da Fatura Aberta (sem gravar no banco)
+      const overageFee = parseFloat(data.overageFee !== undefined ? data.overageFee : ((m && m.overageFee !== undefined) ? m.overageFee : ((appState.globalSettings && appState.globalSettings.overageFee) || 19.90)));
+      const overageCount = Math.max(0, totalStores - planLimit);
+      const overageFeeFormatted = overageFee.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const livePartialAmount = Number((planPrice + (overageCount * overageFee)).toFixed(2));
+      const livePartialFormatted = livePartialAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+      // Calcula data de fechamento (Vencimento - 10 dias) 100% dinâmica pelo dia_vencimento do parceiro logado
+      function calculatePartnerClosingDateFormatted(diaVencimento) {
+        const dueDay = Math.min(Math.max(parseInt(diaVencimento, 10) || 15, 1), 31);
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const makeDueDate = (yr, mo) => new Date(yr, mo, Math.min(dueDay, new Date(yr, mo + 1, 0).getDate()));
+
+        let monthOffset = 0;
+        let dueDate = makeDueDate(today.getFullYear(), today.getMonth());
+        let closingDate = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate() - 10);
+
+        while (closingDate.getTime() < today.getTime()) {
+          monthOffset += 1;
+          dueDate = makeDueDate(today.getFullYear(), today.getMonth() + monthOffset);
+          closingDate = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate() - 10);
+        }
+
+        const dd = String(closingDate.getDate()).padStart(2, '0');
+        const mm = String(closingDate.getMonth() + 1).padStart(2, '0');
+        const yyyy = closingDate.getFullYear();
+        return `${dd}/${mm}/${yyyy}`;
+      }
+
+      const partnerDueDay = p.dia_vencimento ?? p.diaVencimento ?? (appState.currentUser && (appState.currentUser.dia_vencimento ?? appState.currentUser.diaVencimento)) ?? (data.faturaAberta && data.faturaAberta.diaVencimento) ?? 15;
+      const closingDateStr = calculatePartnerClosingDateFormatted(partnerDueDay);
+
+      const openClosingEl = document.getElementById('partner-open-cycle-closing');
+      const openAmountEl = document.getElementById('partner-open-cycle-amount');
+      const openDetailEl = document.getElementById('partner-open-cycle-detail');
+      if (openClosingEl) {
+        openClosingEl.innerHTML = `O seu ciclo atual fecha em <strong class="text-white font-mono">${closingDateStr}</strong>.`;
+      }
+      if (openAmountEl) {
+        openAmountEl.innerText = `R$ ${livePartialFormatted}`;
+      }
+      if (openDetailEl) {
+        openDetailEl.innerText = `Plano ${planName} (R$ ${planPriceFormatted}) + ${overageCount} loja(s) excedente(s) × R$ ${overageFeeFormatted} • Leitura ao vivo sem gravação antecipada.`;
+      }
+
       const finRuleEl = document.getElementById('partner-fin-plan-rule');
       if (finRuleEl) {
-        finRuleEl.innerHTML = `Franquia Fixa: Plano ${planName} &bull; R$ ${planPriceFormatted}/mês (${planLimit} Tokens)`;
+        finRuleEl.innerHTML = `Franquia: Plano ${planName} (R$ ${planPriceFormatted}/mês &bull; ${planLimit} lojas) | Excedente: R$ ${overageFeeFormatted}/loja (${overageCount} exced.)`;
       }
 
       renderPartnerStoresList(stores);
@@ -11067,6 +11366,11 @@ let currentCheckoutOptions = null;
       } else if (tab === 'fin') {
         if (tabFin) tabFin.className = 'px-3.5 py-2 rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-1.5 bg-indigo-600 text-white shadow-sm';
         if (panelFin) panelFin.classList.remove('hidden');
+        if (window.partnerDashboardData) {
+          applyPartnerDashboardData(window.partnerDashboardData);
+        } else {
+          renderPartnerDashboard();
+        }
       }
     }
     window.setPartnerTab = setPartnerTab;
@@ -11239,16 +11543,27 @@ let currentCheckoutOptions = null;
       const container = document.getElementById('partner-invoices-list');
       if (!container) return;
 
-      if (!invoices || invoices.length === 0) {
-        container.innerHTML = `<tr><td colspan="8" class="p-6 text-center text-slate-500">Nenhuma fatura emitida até o momento.</td></tr>`;
+      // Exibe APENAS faturas efetivamente geradas/fechadas no banco (bloqueia abertas/previsões/mocks)
+      const closedInvoices = (Array.isArray(invoices) ? invoices : []).filter(inv => {
+        if (!inv || !inv.id) return false;
+        if (inv.fechada === false || inv.isPreview === true || inv.isOpenCycle === true || inv.mock === true) return false;
+        const stNorm = String(inv.status || '').trim().toLowerCase();
+        if (!stNorm || ['aberta', 'aberto', 'em aberto', 'open', 'rascunho', 'draft', 'previsao', 'previsão'].includes(stNorm)) {
+          return false;
+        }
+        return true;
+      });
+
+      if (closedInvoices.length === 0) {
+        container.innerHTML = `<tr><td colspan="8" class="p-6 text-center text-slate-500">Nenhuma fatura fechada emitida até o momento. Sua fatura atual aparecerá aqui no dia do fechamento.</td></tr>`;
         return;
       }
 
-      container.innerHTML = invoices.map(inv => {
+      container.innerHTML = closedInvoices.map(inv => {
         let statusBadge = '';
         const st = (inv.status || '').toLowerCase();
-        if (st.includes('paga')) {
-          statusBadge = '<span class="bg-emerald-950/80 text-emerald-400 border border-emerald-700/60 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase">Paga</span>';
+        if (st.includes('paga') || st.includes('pago') || st.includes('paid')) {
+          statusBadge = '<span class="bg-emerald-950/80 text-emerald-400 border border-emerald-700/60 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase">PAGO</span>';
         } else if (st.includes('vencida')) {
           statusBadge = '<span class="bg-rose-950/80 text-rose-400 border border-rose-700/60 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase">Vencida</span>';
         } else if (st.includes('cancelada')) {
@@ -11257,27 +11572,29 @@ let currentCheckoutOptions = null;
           statusBadge = '<span class="bg-amber-950/80 text-amber-400 border border-amber-700/60 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase">Pendente</span>';
         }
 
+        const lojasCobradasReal = inv.lojas_cobradas !== undefined ? inv.lojas_cobradas : (inv.lojasCobradas || 0);
         const totalFormatted = `R$ ${Number(inv.valorTotal || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-        const unitFormatted = `R$ ${Number(inv.valorUnitario || 29.90).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        const overageVal = Number(inv.overageFee !== undefined ? inv.overageFee : (inv.valorUnitario || 19.90));
+        const unitFormatted = `R$ ${overageVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
         return `
           <tr class="hover:bg-slate-800/60 transition">
             <td class="p-3 font-mono font-bold text-white">${inv.id}</td>
             <td class="p-3 font-semibold text-slate-300">${inv.mesReferencia}</td>
-            <td class="p-3 text-center font-mono font-bold text-indigo-300">${inv.lojasCobradas}</td>
-            <td class="p-3 font-mono text-slate-400 text-xs">${unitFormatted}</td>
+            <td class="p-3 text-center font-mono font-bold text-indigo-300">${lojasCobradasReal}${inv.excedentesQtd > 0 ? ` <span class="text-[10px] text-rose-400">(${inv.excedentesQtd} exc.)</span>` : ''}</td>
+            <td class="p-3 font-mono text-slate-400 text-xs">${unitFormatted}/exc.</td>
             <td class="p-3 font-mono font-black text-amber-300">${totalFormatted}</td>
             <td class="p-3 font-mono text-slate-300 text-xs">${inv.dataVencimento}</td>
             <td class="p-3 text-center">${statusBadge}</td>
             <td class="p-3 text-right">
               <div class="flex items-center justify-end gap-1.5">
-                ${!st.includes('paga') ? `
+                ${(!st.includes('paga') && !st.includes('pago') && !st.includes('paid')) ? `
                   <button type="button" onclick="payWithPix({ type: 'partner_invoice', invoiceId: '${inv.id}', amount: ${inv.valorTotal}, description: 'Fatura B2B ${inv.id}' })" class="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition flex items-center gap-1 cursor-pointer active:scale-95 shadow-xs" title="Pagar fatura instantaneamente via PIX">
                     <span>💳</span>
                     <span>Pagar PIX</span>
                   </button>
                 ` : ''}
-                <button type="button" onclick="downloadInvoicePdf('${inv.id}')" class="px-2.5 py-1.5 rounded-xl bg-indigo-600/30 hover:bg-indigo-600 text-indigo-300 hover:text-white border border-indigo-500/40 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer active:scale-95" title="Baixar fatura e demonstrativo em PDF">
+                <button type="button" onclick="downloadInvoicePdf('${inv.id}', '${String(inv.mesReferencia || '').replace(/'/g, '')}')" class="px-2.5 py-1.5 rounded-xl bg-indigo-600/30 hover:bg-indigo-600 text-indigo-300 hover:text-white border border-indigo-500/40 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer active:scale-95" title="Baixar fatura e demonstrativo em PDF">
                   <span>📄</span>
                   <span>PDF</span>
                 </button>
@@ -11290,13 +11607,24 @@ let currentCheckoutOptions = null;
 
     function openAddPartnerStoreModal() {
       const modal = document.getElementById('modal-add-partner-store');
-      if (modal) modal.classList.remove('hidden');
+      if (modal) {
+        modal.classList.remove('hidden');
+        modal.style.removeProperty('display');
+        modal.style.setProperty('display', 'flex', 'important');
+      }
     }
     window.openAddPartnerStoreModal = openAddPartnerStoreModal;
 
     function closeAddPartnerStoreModal() {
       const modal = document.getElementById('modal-add-partner-store');
-      if (modal) modal.classList.add('hidden');
+      if (modal) {
+        modal.classList.add('hidden');
+        modal.style.setProperty('display', 'none', 'important');
+      }
+      const inName = document.getElementById('partner-new-store-name');
+      const inCnpj = document.getElementById('partner-new-store-cnpj');
+      if (inName) inName.value = '';
+      if (inCnpj) inCnpj.value = '';
     }
     window.closeAddPartnerStoreModal = closeAddPartnerStoreModal;
 
@@ -11330,7 +11658,8 @@ let currentCheckoutOptions = null;
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'X-Parceiro-ID': partnerId
+            'X-Parceiro-ID': partnerId,
+            'bypass-tunnel-reminder': 'true'
           },
           body: JSON.stringify({
             partnerId: partnerId,
@@ -11341,16 +11670,19 @@ let currentCheckoutOptions = null;
           })
         });
 
-        if (res.ok) {
-          const data = await res.json();
+        const data = await res.json().catch(() => ({}));
+
+        if (res.ok && (data.success !== false)) {
           const createdStore = data.loja || data.store || data.tenant;
 
-          // Atualiza o estado local imediatamente
+          // Atualiza o estado local imediatamente (suportando lojas incluídas e excedentes)
           if (!appState.partnerStores) appState.partnerStores = {};
           if (!appState.partnerStores[partnerId]) appState.partnerStores[partnerId] = [];
-          appState.partnerStores[partnerId].unshift(createdStore);
+          if (createdStore) {
+            appState.partnerStores[partnerId].unshift(createdStore);
+          }
 
-          // Atualiza contadores de lojas e tokens calculando lojas únicas
+          // Atualiza contadores de lojas sem limitar ao teto do plano
           if (appState.partnerStores && appState.partnerStores[partnerId]) {
             const seenKeys = new Set();
             const uniqueActive = appState.partnerStores[partnerId].filter(s => {
@@ -11372,25 +11704,23 @@ let currentCheckoutOptions = null;
               }
             }
           }
-          if (Array.isArray(cachedAdminPartners)) {
-            const pFound = cachedAdminPartners.find(p => String(p.id).toUpperCase() === String(partnerId).toUpperCase());
-            if (pFound) {
-              pFound.storesCount = (pFound.storesCount || 0) + 1;
-              pFound.activeStoresCount = (pFound.activeStoresCount || 0) + 1;
-            }
-          }
           saveState();
 
-          closeAddPartnerStoreModal();
+          // Limpa inputs e fecha o modal imediatamente (inclusive quando cadastrada como excedente)
           if (inName) inName.value = '';
           if (inCnpj) inCnpj.value = '';
+          closeAddPartnerStoreModal();
 
-          showToast(`✅ Loja "${createdStore.name || name}" cadastrada com sucesso! ID da Loja: ${createdStore.id}`);
+          if (data.isOverage) {
+            const feeFmt = Number(data.overageFee || 19.90).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            showToast(`✅ Loja excedente "${(createdStore && createdStore.name) || name}" cadastrada (+R$ ${feeFmt}/mês).`);
+          } else {
+            showToast(`✅ Loja "${(createdStore && createdStore.name) || name}" cadastrada com sucesso! ID: ${createdStore ? createdStore.id : ''}`);
+          }
           await renderPartnerDashboard();
           return false;
         } else {
-          const errData = await res.json().catch(() => ({}));
-          showToast(`⚠️ ${errData.error || 'Falha ao cadastrar loja.'}`);
+          showToast(`⚠️ ${data.error || 'Falha ao cadastrar loja.'}`);
         }
       } catch (err) {
         console.warn('Erro na conexão com /api/partner/lojas, gerando provisionamento local:', err);
@@ -11858,10 +12188,50 @@ let currentCheckoutOptions = null;
     }
     window.copyPartnerApiKey = copyPartnerApiKey;
 
-    function downloadInvoicePdf(invoiceId) {
-      const partnerId = (appState.currentUser && appState.currentUser.partnerId) || 'PARC-001';
-      showToast('📄 Gerando e baixando fatura PDF oficial...');
-      window.open(`/api/partner/invoices/pdf?id=${invoiceId}&partnerId=${partnerId}`, '_blank');
+    async function downloadInvoicePdf(invoiceId = '', mesReferencia = '') {
+      const partnerId = (appState.currentUser && (appState.currentUser.partnerId || appState.currentUser.parceiro_id || appState.currentUser.id)) || 'PARC-001';
+      const fallbackMonth = new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' }).format(new Date());
+      const mesFinal = mesReferencia || fallbackMonth;
+      const slug = String(mesFinal)
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\//g, '_')
+        .replace(/[^a-zA-Z0-9_-]+/g, '_')
+        .replace(/_+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .toUpperCase();
+      let filename = `fatura_vokzo_${slug || 'MES'}.pdf`;
+
+      const query = new URLSearchParams({
+        id: invoiceId || '',
+        partnerId: partnerId,
+        mes: mesFinal
+      });
+      const url = `/api/partner/invoices/pdf?${query.toString()}`;
+
+      showToast('📄 Gerando fatura VOKZO B2B em PDF...');
+      try {
+        const res = await fetch(url, {
+          headers: { 'bypass-tunnel-reminder': 'true', 'Bypass-Tunnel-Reminder': '1' }
+        });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+
+        const disp = res.headers.get('Content-Disposition') || '';
+        const match = disp.match(/filename="?([^"]+)"?/i);
+        if (match && match[1]) filename = match[1];
+
+        const blob = await res.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 2000);
+      } catch (err) {
+        window.open(url, '_blank');
+      }
     }
     window.downloadInvoicePdf = downloadInvoicePdf;
 
@@ -11979,9 +12349,11 @@ let currentCheckoutOptions = null;
     }
     window.renderAdminPartners = renderAdminPartners;
 
-    // --- ATRIBUIÇÃO DE QUALQUER PLANO A QUALQUER PARCEIRO PELO ADMIN ---
+    // --- ATRIBUIÇÃO DE QUALQUER PLANO E VENCIMENTO AO PARCEIRO PELO ADMIN ---
     function openAdminAssignPlanModal(partnerId) {
-      const p = (appState.partnersList || []).find(x => x.id === partnerId) || {};
+      const p = (typeof cachedAdminPartners !== 'undefined' && Array.isArray(cachedAdminPartners)
+        ? cachedAdminPartners.find(x => x.id === partnerId)
+        : null) || (appState.partnersList || []).find(x => x.id === partnerId) || (appState.partners && appState.partners[partnerId]) || {};
       document.getElementById('admin-assign-partner-id').value = partnerId;
       document.getElementById('admin-assign-partner-name').innerText = p.name || partnerId;
       document.getElementById('admin-assign-partner-id-badge').innerText = partnerId;
@@ -11996,9 +12368,164 @@ let currentCheckoutOptions = null;
         `).join('');
       }
 
+      const dueSelect = document.getElementById('admin-assign-due-day');
+      if (dueSelect) {
+        const currentDue = parseInt(p.dia_vencimento, 10);
+        dueSelect.value = String([5, 10, 15, 20, 25].includes(currentDue) ? currentDue : 15);
+      }
+
       document.getElementById('modal-admin-assign-plan').classList.remove('hidden');
     }
     window.openAdminAssignPlanModal = openAdminAssignPlanModal;
+
+    let cachedAdminPartnerInvoices = [];
+    let currentAdminInvoicesPartnerId = '';
+
+    async function openAdminPartnerInvoicesModal(partnerId) {
+      const p = (cachedAdminPartners || []).find(x => String(x.id).toUpperCase() === String(partnerId).toUpperCase())
+        || (appState.partners && appState.partners[partnerId])
+        || { id: partnerId, name: 'Parceiro PDV' };
+
+      currentAdminInvoicesPartnerId = p.id || partnerId;
+      const modal = document.getElementById('modal-admin-partner-invoices');
+      const nameEl = document.getElementById('admin-fin-partner-name');
+      const idEl = document.getElementById('admin-fin-partner-id-badge');
+      const tbody = document.getElementById('admin-partner-invoices-tbody');
+
+      if (nameEl) nameEl.innerText = p.name || p.nome || 'Parceiro PDV';
+      if (idEl) idEl.innerText = currentAdminInvoicesPartnerId;
+      if (tbody) {
+        tbody.innerHTML = '<tr><td colspan="5" class="p-6 text-center text-slate-400">⏳ Carregando faturas do parceiro...</td></tr>';
+      }
+      if (modal) {
+        modal.classList.remove('hidden');
+        modal.style.removeProperty('display');
+        modal.style.setProperty('display', 'flex', 'important');
+      }
+
+      try {
+        const res = await fetch(`/api/partner/invoices?partnerId=${encodeURIComponent(currentAdminInvoicesPartnerId)}&t=${Date.now()}`, {
+          headers: { 'Cache-Control': 'no-cache', 'bypass-tunnel-reminder': 'true' }
+        });
+        const data = await res.json();
+        cachedAdminPartnerInvoices = Array.isArray(data.invoices) ? data.invoices : [];
+        renderAdminPartnerInvoicesRows(cachedAdminPartnerInvoices);
+      } catch (err) {
+        if (tbody) {
+          tbody.innerHTML = `<tr><td colspan="5" class="p-6 text-center text-rose-500 font-bold">❌ Erro ao carregar faturas: ${escapeLogHtml(err.message)}</td></tr>`;
+        }
+      }
+    }
+    window.openAdminPartnerInvoicesModal = openAdminPartnerInvoicesModal;
+
+    function closeAdminPartnerInvoicesModal() {
+      const modal = document.getElementById('modal-admin-partner-invoices');
+      if (modal) {
+        modal.classList.add('hidden');
+        modal.style.setProperty('display', 'none', 'important');
+      }
+    }
+    window.closeAdminPartnerInvoicesModal = closeAdminPartnerInvoicesModal;
+
+    function renderAdminPartnerInvoicesRows(invoices) {
+      const tbody = document.getElementById('admin-partner-invoices-tbody');
+      if (!tbody) return;
+
+      if (!invoices || invoices.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="p-6 text-center text-slate-400">Nenhuma fatura gerada para este parceiro até o momento.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = invoices.map(inv => {
+        const stRaw = String(inv.status || 'PENDENTE').toUpperCase();
+        const isPaid = stRaw.includes('PAGO') || stRaw.includes('PAGA') || stRaw.includes('PAID');
+        const isCanceled = stRaw.includes('CANCELAD');
+        const isPending = !isPaid && !isCanceled;
+
+        const statusBadge = isPaid
+          ? `<span id="admin-inv-badge-${escapeLogHtml(inv.id)}" class="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 border border-emerald-300 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase">PAGO</span>`
+          : (isCanceled
+              ? `<span id="admin-inv-badge-${escapeLogHtml(inv.id)}" class="inline-flex items-center gap-1 bg-slate-100 text-slate-600 border border-slate-300 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase">${escapeLogHtml(stRaw)}</span>`
+              : `<span id="admin-inv-badge-${escapeLogHtml(inv.id)}" class="inline-flex items-center gap-1 bg-amber-100 text-amber-800 border border-amber-300 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase">${escapeLogHtml(stRaw)}</span>`);
+
+        const totalFormatted = `R$ ${Number(inv.valorTotal || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+        return `
+          <tr id="admin-inv-row-${escapeLogHtml(inv.id)}" class="hover:bg-slate-50 transition">
+            <td class="p-3 font-mono font-bold text-slate-900">${escapeLogHtml(inv.id)}</td>
+            <td class="p-3 font-semibold text-slate-700">${escapeLogHtml(inv.mesReferencia || '--')}</td>
+            <td class="p-3 font-mono font-black text-slate-900">${totalFormatted}</td>
+            <td class="p-3 text-center">${statusBadge}</td>
+            <td class="p-3 text-right" id="admin-inv-action-${escapeLogHtml(inv.id)}">
+              ${isPending
+                ? `<button type="button" onclick="markPartnerInvoiceAsPaid('${escapeLogHtml(inv.id)}', this)" class="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[11px] transition shadow-xs cursor-pointer active:scale-95">✓ Marcar como Pago</button>`
+                : `<span class="text-[11px] font-bold text-emerald-700">${isPaid ? '✓ Quitado' : '--'}</span>`}
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    async function markPartnerInvoiceAsPaid(invoiceId, btnEl) {
+      if (btnEl) {
+        btnEl.disabled = true;
+        btnEl.dataset.originalText = btnEl.innerText;
+        btnEl.innerText = 'Processando...';
+      }
+
+      try {
+        const res = await fetch(`/api/admin/invoices/${encodeURIComponent(invoiceId)}/status`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'bypass-tunnel-reminder': 'true',
+            'Bypass-Tunnel-Reminder': '1'
+          },
+          body: JSON.stringify({ status: 'PAGO' })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.success === false) {
+          throw new Error((data && data.error) || `Erro HTTP ${res.status}`);
+        }
+
+        // Atualiza cache local + DOM imediato (tag verde PAGO e remove botão)
+        const idx = cachedAdminPartnerInvoices.findIndex(i => String(i.id) === String(invoiceId));
+        if (idx !== -1) {
+          cachedAdminPartnerInvoices[idx].status = 'PAGO';
+          if (data.invoice) cachedAdminPartnerInvoices[idx] = data.invoice;
+        }
+
+        const badgeEl = document.getElementById(`admin-inv-badge-${invoiceId}`);
+        if (badgeEl) {
+          badgeEl.className = 'inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 border border-emerald-300 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase';
+          badgeEl.innerText = 'PAGO';
+        }
+        const actionCell = document.getElementById(`admin-inv-action-${invoiceId}`);
+        if (actionCell) {
+          actionCell.innerHTML = '<span class="text-[11px] font-bold text-emerald-700">✓ Quitado</span>';
+        }
+        renderAdminPartnerInvoicesRows(cachedAdminPartnerInvoices);
+
+        if (typeof showGlobalSuccessModal === 'function') {
+          showGlobalSuccessModal('Fatura Paga!', `A fatura ${invoiceId} foi marcada como PAGO com sucesso.`);
+        } else {
+          showToast(`✅ Fatura ${invoiceId} marcada como PAGO!`);
+        }
+      } catch (err) {
+        if (btnEl) {
+          btnEl.disabled = false;
+          btnEl.innerText = btnEl.dataset.originalText || '✓ Marcar como Pago';
+        }
+        const errMsg = 'Falha ao dar baixa na fatura: ' + (err.message || 'Erro de comunicação com a API.');
+        if (typeof Swal !== 'undefined') {
+          Swal.fire({ icon: 'error', title: 'Erro na Baixa', text: errMsg, confirmButtonColor: '#e11d48' });
+        } else {
+          alert(errMsg);
+        }
+        showToast('❌ ' + errMsg);
+      }
+    }
+    window.markPartnerInvoiceAsPaid = markPartnerInvoiceAsPaid;
 
     function closeAdminAssignPlanModal() {
       const m = document.getElementById('modal-admin-assign-plan');
@@ -12013,6 +12540,8 @@ let currentCheckoutOptions = null;
       }
       const partnerId = document.getElementById('admin-assign-partner-id').value;
       const planId = document.getElementById('admin-assign-plan-select').value;
+      const dueSelect = document.getElementById('admin-assign-due-day');
+      const dia_vencimento = parseInt(dueSelect && dueSelect.value ? dueSelect.value : '15', 10) || 15;
       const btn = document.getElementById('btn-admin-assign-plan-submit');
 
       if (!partnerId || !planId) return false;
@@ -12032,6 +12561,7 @@ let currentCheckoutOptions = null;
         actor_id: actorId,
         plano_id: planId,
         plano: planId,
+        dia_vencimento,
         limite_tokens: selectedPlan ? selectedPlan.limite_lojas : undefined,
         limite_lojas: selectedPlan ? selectedPlan.limite_lojas : undefined,
         valor_mensal: selectedPlan ? selectedPlan.valor_mensal : undefined
@@ -12322,11 +12852,11 @@ let currentCheckoutOptions = null;
                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> <span>Ativo</span>
              </span>`;
 
-        const toggleLockBtn = isBlocked
+        const toggleActionItem = isBlocked
           ? `<button 
                type="button" 
-               onclick="togglePartnerStatus('${p.id}', 'ativo')" 
-               class="bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 font-bold text-xs px-2.5 py-1.5 rounded-xl shadow-2xs transition flex items-center gap-1 cursor-pointer active:scale-95" 
+               onclick="togglePartnerStatus('${p.id}', 'ativo'); closeAllPartnerKebabMenus();" 
+               class="w-full px-3.5 py-2 text-left text-amber-800 hover:bg-amber-50 font-bold text-xs transition flex items-center gap-2 cursor-pointer" 
                title="Desbloquear este parceiro e reativar suas integrações de API imediatamente"
              >
                <span>🔓</span>
@@ -12334,8 +12864,8 @@ let currentCheckoutOptions = null;
              </button>`
           : `<button 
                type="button" 
-               onclick="togglePartnerStatus('${p.id}', 'bloqueado')" 
-               class="bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 border border-slate-200 hover:border-rose-200 font-bold text-xs px-2.5 py-1.5 rounded-xl transition flex items-center gap-1 cursor-pointer active:scale-95" 
+               onclick="togglePartnerStatus('${p.id}', 'bloqueado'); closeAllPartnerKebabMenus();" 
+               class="w-full px-3.5 py-2 text-left text-rose-600 hover:bg-rose-50 font-bold text-xs transition flex items-center gap-2 cursor-pointer" 
                title="Bloquear este parceiro (Soft Lock): suspende emissão de tokens e acesso à API mantendo histórico financeiro"
              >
                <span>🔒</span>
@@ -12375,6 +12905,7 @@ let currentCheckoutOptions = null;
                   <span>📦</span> <span>${planName}</span>
                 </span>
                 <span class="text-[10px] text-slate-400 mt-0.5">Até ${planLimit} lojas • R$ ${planPrice}/mês</span>
+                <span class="text-[10px] font-mono font-bold text-indigo-700 mt-0.5">Vencimento: Dia ${String(p.dia_vencimento || 15).padStart(2, '0')}</span>
               </div>
             </td>
             <td class="p-3 text-center">
@@ -12390,15 +12921,6 @@ let currentCheckoutOptions = null;
               <div class="flex items-center justify-end gap-1.5">
                 <button 
                   type="button" 
-                  onclick="openAdminAssignPlanModal('${p.id}')" 
-                  class="bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 font-bold text-xs px-2.5 py-1.5 rounded-xl shadow-2xs transition flex items-center gap-1 cursor-pointer active:scale-95" 
-                  title="Atribuir qualquer plano B2B a este parceiro"
-                >
-                  <span>📦</span>
-                  <span>Alterar Plano</span>
-                </button>
-                <button 
-                  type="button" 
                   onclick="impersonatePartner('${p.id}')" 
                   class="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs px-3 py-1.5 rounded-xl shadow-xs transition flex items-center gap-1 cursor-pointer active:scale-95" 
                   title="Acessar painel deste parceiro para prestar suporte e visualizar lojas conectadas"
@@ -12406,7 +12928,56 @@ let currentCheckoutOptions = null;
                   <span>Acessar</span>
                   <span>↗</span>
                 </button>
-                ${toggleLockBtn}
+
+                <div class="relative inline-block text-left">
+                  <button
+                    type="button"
+                    id="partner-kebab-btn-${p.id}"
+                    onclick="togglePartnerKebabMenu(event, '${p.id}')"
+                    class="w-8 h-8 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-slate-600 hover:text-slate-900 inline-flex items-center justify-center transition shadow-2xs cursor-pointer active:scale-95"
+                    title="Mais ações do Parceiro"
+                  >
+                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z"/>
+                    </svg>
+                  </button>
+
+                  <div
+                    id="partner-kebab-menu-${p.id}"
+                    class="partner-kebab-dropdown hidden fixed w-48 bg-white border border-slate-200 rounded-2xl shadow-xl py-1.5 z-[9999] text-left"
+                    onclick="event.stopPropagation()"
+                  >
+                    <button 
+                      type="button" 
+                      onclick="openEditPartnerModal('${p.id}'); closeAllPartnerKebabMenus();" 
+                      class="w-full px-3.5 py-2 text-left text-indigo-800 hover:bg-indigo-50 font-bold text-xs transition flex items-center gap-2 cursor-pointer" 
+                      title="Editar dados cadastrais, plano e dia de vencimento do parceiro"
+                    >
+                      <span>✏️</span>
+                      <span>Editar Parceiro</span>
+                    </button>
+                    <button 
+                      type="button" 
+                      onclick="openAdminPartnerInvoicesModal('${p.id}'); closeAllPartnerKebabMenus();" 
+                      class="w-full px-3.5 py-2 text-left text-emerald-800 hover:bg-emerald-50 font-bold text-xs transition flex items-center gap-2 cursor-pointer" 
+                      title="Visualizar faturas e dar baixa manual de pagamento"
+                    >
+                      <span>💰</span>
+                      <span>Financeiro</span>
+                    </button>
+                    <button 
+                      type="button" 
+                      onclick="openAdminAssignPlanModal('${p.id}'); closeAllPartnerKebabMenus();" 
+                      class="w-full px-3.5 py-2 text-left text-amber-800 hover:bg-amber-50 font-bold text-xs transition flex items-center gap-2 cursor-pointer" 
+                      title="Atribuir qualquer plano B2B a este parceiro"
+                    >
+                      <span>📦</span>
+                      <span>Alterar Plano</span>
+                    </button>
+                    <div class="border-t border-slate-100 my-1"></div>
+                    ${toggleActionItem}
+                  </div>
+                </div>
               </div>
             </td>
           </tr>
@@ -12423,6 +12994,37 @@ let currentCheckoutOptions = null;
         pagEl.innerHTML = buildPaginationControlsHtml('adminPartners', adminPartnersPage, adminPartnersPageSize, totalItems);
       }
     }
+
+    function closeAllPartnerKebabMenus() {
+      document.querySelectorAll('.partner-kebab-dropdown').forEach(m => m.classList.add('hidden'));
+    }
+    window.closeAllPartnerKebabMenus = closeAllPartnerKebabMenus;
+
+    function togglePartnerKebabMenu(event, partnerId) {
+      if (event) {
+        event.stopPropagation();
+        event.preventDefault();
+      }
+      const btn = document.getElementById('partner-kebab-btn-' + partnerId);
+      const menu = document.getElementById('partner-kebab-menu-' + partnerId);
+      const wasOpen = menu && !menu.classList.contains('hidden');
+
+      closeAllPartnerKebabMenus();
+      if (typeof closeAllMerchantKebabMenus === 'function') closeAllMerchantKebabMenus();
+
+      if (!wasOpen && menu && btn) {
+        menu.classList.remove('hidden');
+        const rect = btn.getBoundingClientRect();
+        const menuHeight = menu.offsetHeight || 168;
+        const spaceBelow = window.innerHeight - rect.bottom;
+        const topPos = (spaceBelow < menuHeight + 12 && rect.top > menuHeight + 12)
+          ? (rect.top - menuHeight - 6)
+          : (rect.bottom + 6);
+        menu.style.top = Math.max(8, topPos) + 'px';
+        menu.style.right = Math.max(8, window.innerWidth - rect.right) + 'px';
+      }
+    }
+    window.togglePartnerKebabMenu = togglePartnerKebabMenu;
     
     // Gestão de Planos B2B (Franquia Fixa)
     let cachedB2bPlans = [
@@ -12683,18 +13285,94 @@ let currentCheckoutOptions = null;
     }
     window.deleteB2bPlan = deleteB2bPlan;
   
-    // Modal de Cadastro de Parceiro
+    // Modal de Cadastro / Edição de Parceiro B2B
     function openCreatePartnerModal() {
       const modal = document.getElementById('modal-create-partner');
       if (!modal) return;
       const form = document.getElementById('form-create-partner');
       if (form) form.reset();
       if (typeof populatePartnerCreatePlans === 'function') populatePartnerCreatePlans();
+
+      const editIdInput = document.getElementById('partner-edit-id');
+      if (editIdInput) editIdInput.value = '';
+      const titleEl = document.getElementById('modal-create-partner-title');
+      const subtitleEl = document.getElementById('modal-create-partner-subtitle');
+      const pinEl = document.getElementById('partner-create-pin');
+      const pinHintEl = document.getElementById('partner-create-pin-hint');
+      const dueDayEl = document.getElementById('partner-create-due-day');
+      const submitBtn = document.getElementById('btn-submit-create-partner');
+
+      if (titleEl) titleEl.innerText = 'Novo Parceiro (Revendedor B2B)';
+      if (subtitleEl) subtitleEl.innerText = 'Cadastro direto de empresa desenvolvedora de PDV';
+      if (pinEl) {
+        pinEl.required = true;
+        pinEl.placeholder = 'Ex: 1234';
+      }
+      if (pinHintEl) pinHintEl.innerText = 'Senha numérica de 4 dígitos para o parceiro acessar seu portal.';
+      if (dueDayEl) dueDayEl.value = '15';
+      if (submitBtn) submitBtn.innerHTML = '<span>Salvar Parceiro</span> <span>✓</span>';
+
       modal.classList.remove('hidden');
       modal.style.removeProperty('display');
       modal.style.display = 'flex';
     }
     window.openCreatePartnerModal = openCreatePartnerModal;
+
+    function openEditPartnerModal(partnerId) {
+      const modal = document.getElementById('modal-create-partner');
+      if (!modal) return;
+      const form = document.getElementById('form-create-partner');
+      if (form) form.reset();
+      if (typeof populatePartnerCreatePlans === 'function') populatePartnerCreatePlans();
+
+      const partner = (typeof cachedAdminPartners !== 'undefined' && Array.isArray(cachedAdminPartners)
+        ? cachedAdminPartners.find(p => String(p.id).toUpperCase() === String(partnerId).toUpperCase())
+        : null) || (appState.partners && appState.partners[partnerId]) || (appState.partnersList || []).find(p => p.id === partnerId) || {};
+
+      const editIdInput = document.getElementById('partner-edit-id');
+      const titleEl = document.getElementById('modal-create-partner-title');
+      const subtitleEl = document.getElementById('modal-create-partner-subtitle');
+      const inName = document.getElementById('partner-create-name');
+      const inCnpj = document.getElementById('partner-create-cnpj');
+      const inPhone = document.getElementById('partner-create-phone');
+      const inPin = document.getElementById('partner-create-pin');
+      const pinHintEl = document.getElementById('partner-create-pin-hint');
+      const inEmail = document.getElementById('partner-create-email');
+      const inPlan = document.getElementById('partner-create-plan');
+      const inDueDay = document.getElementById('partner-create-due-day');
+      const submitBtn = document.getElementById('btn-submit-create-partner');
+
+      if (editIdInput) editIdInput.value = partner.id || partnerId;
+      if (titleEl) titleEl.innerText = `Editar Parceiro (${partner.id || partnerId})`;
+      if (subtitleEl) subtitleEl.innerText = 'Atualize dados cadastrais, franquia B2B e dia de vencimento';
+      if (inName) inName.value = partner.name || '';
+      if (inCnpj) {
+        inCnpj.value = partner.cnpj || '';
+        if (typeof applyCnpjMask === 'function' && inCnpj.value) applyCnpjMask(inCnpj);
+      }
+      if (inPhone) {
+        inPhone.value = partner.phone || '';
+        if (typeof applyPhoneMask === 'function' && inPhone.value) applyPhoneMask(inPhone);
+      }
+      if (inPin) {
+        inPin.value = '';
+        inPin.required = false;
+        inPin.placeholder = '•••• (manter atual)';
+      }
+      if (pinHintEl) pinHintEl.innerText = 'Deixe em branco para manter o PIN atual do parceiro.';
+      if (inEmail) inEmail.value = partner.email || '';
+      if (inPlan && partner.plano_id) inPlan.value = partner.plano_id;
+
+      const allowedDueDays = [5, 10, 15, 20, 25];
+      const currentDue = parseInt(partner.dia_vencimento, 10);
+      if (inDueDay) inDueDay.value = String(allowedDueDays.includes(currentDue) ? currentDue : 15);
+      if (submitBtn) submitBtn.innerHTML = '<span>Salvar Alterações</span> <span>✓</span>';
+
+      modal.classList.remove('hidden');
+      modal.style.removeProperty('display');
+      modal.style.display = 'flex';
+    }
+    window.openEditPartnerModal = openEditPartnerModal;
 
     function closeCreatePartnerModal() {
       const modal = document.getElementById('modal-create-partner');
@@ -12705,12 +13383,16 @@ let currentCheckoutOptions = null;
     }
     window.closeCreatePartnerModal = closeCreatePartnerModal;
 
-    // AJAX / Fetch: Submissão limpa apontando estritamente para POST /api/v1/partners
+    // AJAX / Fetch: Submissão para Criar (POST /api/v1/partners) ou Editar (PUT /api/v1/partners/:id)
     async function handleCreatePartnerSubmit(e) {
       if (e) {
         e.preventDefault();
         e.stopPropagation();
       }
+
+      const editIdEl = document.getElementById('partner-edit-id');
+      const editId = editIdEl ? editIdEl.value.trim() : '';
+      const isEditMode = Boolean(editId);
 
       const inName = document.getElementById('partner-create-name');
       const inCnpj = document.getElementById('partner-create-cnpj');
@@ -12718,6 +13400,7 @@ let currentCheckoutOptions = null;
       const inPin = document.getElementById('partner-create-pin');
       const inEmail = document.getElementById('partner-create-email');
       const inPlan = document.getElementById('partner-create-plan');
+      const inDueDay = document.getElementById('partner-create-due-day');
 
       const name = inName ? inName.value.trim() : '';
       const cnpj = inCnpj ? inCnpj.value.trim() : '';
@@ -12725,6 +13408,7 @@ let currentCheckoutOptions = null;
       const pin = inPin ? (inPin.value || '').trim() : '';
       const email = inEmail ? inEmail.value.trim() : '';
       const plano_id = inPlan && inPlan.value ? inPlan.value.trim() : 'plano_starter';
+      const dia_vencimento = parseInt(inDueDay && inDueDay.value ? inDueDay.value : '15', 10) || 15;
 
       if (!name) {
         showToast('⚠️ Informe a Razão Social / Nome da Empresa PDV.');
@@ -12736,12 +13420,83 @@ let currentCheckoutOptions = null;
         return false;
       }
 
-      if (!pin || pin.length !== 4) {
+      if (!isEditMode && (!pin || pin.length !== 4)) {
         showToast('⚠️ O PIN de acesso deve ter exatamente 4 dígitos numéricos.');
         return false;
       }
+      if (isEditMode && pin && pin.length !== 4) {
+        showToast('⚠️ Se informado, o novo PIN deve ter exatamente 4 dígitos numéricos.');
+        return false;
+      }
 
-      // Payload estrito com plano B2B selecionado e status ATIVO
+      if (![5, 10, 15, 20, 25].includes(dia_vencimento)) {
+        showToast('⚠️ Selecione um Dia de Vencimento válido (05, 10, 15, 20 ou 25).');
+        return false;
+      }
+
+      const submitBtn = document.getElementById('btn-submit-create-partner');
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<span>Salvando...</span> <span>⏳</span>';
+      }
+
+      if (isEditMode) {
+        const updatePayload = {
+          id: editId,
+          name,
+          cnpj,
+          phone,
+          email,
+          plano_id,
+          dia_vencimento,
+          ...(pin ? { pin } : {})
+        };
+        try {
+          const res = await fetch(`/api/v1/partners/${encodeURIComponent(editId)}`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'bypass-tunnel-reminder': 'true',
+              'Bypass-Tunnel-Reminder': '1'
+            },
+            body: JSON.stringify(updatePayload)
+          });
+          const data = await res.json();
+          if (res.ok && data.success && data.partner) {
+            const updatedPartner = data.partner;
+            if (!appState.partners) appState.partners = {};
+            appState.partners[updatedPartner.id] = updatedPartner;
+
+            if (typeof cachedAdminPartners !== 'undefined' && Array.isArray(cachedAdminPartners)) {
+              const cIdx = cachedAdminPartners.findIndex(p => p.id === updatedPartner.id);
+              if (cIdx !== -1) cachedAdminPartners[cIdx] = updatedPartner;
+            }
+            if (Array.isArray(appState.partnersList)) {
+              const lIdx = appState.partnersList.findIndex(p => p.id === updatedPartner.id);
+              if (lIdx !== -1) appState.partnersList[lIdx] = updatedPartner;
+            }
+            saveState();
+
+            if (typeof renderAdminPartners === 'function') renderAdminPartners();
+            closeCreatePartnerModal();
+            showToast(`✅ Parceiro "${updatedPartner.name}" atualizado! Vencimento: Dia ${String(updatedPartner.dia_vencimento || dia_vencimento).padStart(2, '0')}`);
+            return false;
+          } else {
+            showToast(`⚠️ ${data.error || 'Falha ao atualizar parceiro.'}`);
+            return false;
+          }
+        } catch (err) {
+          showToast(`❌ Erro de comunicação ao atualizar parceiro: ${err.message}`);
+          return false;
+        } finally {
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<span>Salvar Alterações</span> <span>✓</span>';
+          }
+        }
+      }
+
+      // Payload estrito de criação com plano B2B selecionado, dia_vencimento por parceiro e status ATIVO
       const payload = {
         name,
         cnpj,
@@ -12750,14 +13505,9 @@ let currentCheckoutOptions = null;
         email,
         plano_id,
         plano_tipo: plano_id,
+        dia_vencimento,
         status: 'ATIVO'
       };
-
-      const submitBtn = document.getElementById('btn-submit-create-partner');
-      if (submitBtn) {
-        submitBtn.disabled = true;
-        submitBtn.innerHTML = '<span>Salvando...</span> <span>⏳</span>';
-      }
 
       try {
         // ENDPOINT EXCLUSIVO DE PARCEIROS (NÃO DE LOJISTAS)
@@ -12796,7 +13546,7 @@ let currentCheckoutOptions = null;
           });
 
           closeCreatePartnerModal();
-          showToast(`✅ Parceiro "${newPartner.name}" cadastrado com sucesso! Plano: ${newPartner.nome_plano || plano_id} | Status: ${newPartner.status}`);
+          showToast(`✅ Parceiro "${newPartner.name}" cadastrado com sucesso! Vencimento: Dia ${String(newPartner.dia_vencimento || dia_vencimento).padStart(2, '0')} | Plano: ${newPartner.nome_plano || plano_id}`);
           return false;
         } else {
           showToast(`⚠️ ${data.error || 'Falha ao cadastrar parceiro.'}`);
@@ -12827,6 +13577,7 @@ let currentCheckoutOptions = null;
           limite_lojas: selectedPlan.limite_lojas,
           valor_mensal: selectedPlan.valor_mensal,
           valorPorLoja: selectedPlan.valor_mensal,
+          dia_vencimento,
           storesCount: 0,
           activeStoresCount: 0,
           faturaEstimada: selectedPlan.valor_mensal,
@@ -12848,12 +13599,12 @@ let currentCheckoutOptions = null;
         });
 
         closeCreatePartnerModal();
-        showToast(`✅ Parceiro "${name}" cadastrado localmente! Plano: ${selectedPlan.nome_plano} | Status: ATIVO`);
+        showToast(`✅ Parceiro "${name}" cadastrado localmente! Vencimento: Dia ${String(dia_vencimento).padStart(2, '0')}`);
         return false;
       } finally {
         if (submitBtn) {
           submitBtn.disabled = false;
-          submitBtn.innerHTML = '<span>Salvar Parceiro</span> <span>✓</span>';
+          submitBtn.innerHTML = isEditMode ? '<span>Salvar Alterações</span> <span>✓</span>' : '<span>Salvar Parceiro</span> <span>✓</span>';
         }
       }
     }

@@ -246,9 +246,40 @@
 
     <!-- ABA 3: FINANCEIRO & FATURAS -->
     <div id="partner-panel-fin" class="hidden space-y-4">
-      <div class="bg-slate-900 p-5 rounded-2xl border border-slate-800 space-y-3">
-        <h3 class="font-extrabold text-sm text-white">Histórico de Faturas B2B</h3>
-        <p class="text-xs text-slate-400">Consulte os demonstrativos mensais contratados e realize o download das faturas em PDF oficial.</p>
+      <div class="bg-slate-900 p-5 rounded-2xl border border-slate-800 space-y-4">
+        <div>
+          <h3 class="font-extrabold text-sm text-white">Faturas Mensais & Invoices (B2B)</h3>
+          <p class="text-xs text-slate-400">Histórico exibindo exclusivamente faturas fechadas no dia do fechamento (10 dias antes do vencimento).</p>
+        </div>
+
+        <!-- Card / Indicador de Fatura Aberta (Somente leitura ao vivo - estilo Nubank) -->
+        <div id="partner-open-invoice-card" class="rounded-2xl border border-violet-500/40 bg-gradient-to-r from-violet-950/60 via-slate-900/90 to-indigo-950/60 px-4 py-3.5 shadow-lg">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div class="flex items-start sm:items-center gap-3">
+              <div class="w-9 h-9 rounded-xl bg-violet-500/20 border border-violet-400/30 flex items-center justify-center shrink-0">
+                <span class="w-2.5 h-2.5 rounded-full bg-violet-400 animate-pulse"></span>
+              </div>
+              <div>
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-violet-500/20 text-violet-300 border border-violet-400/30">
+                    Fatura Aberta
+                  </span>
+                  <span id="partner-open-cycle-closing" class="text-[11px] text-slate-300 font-medium">
+                    Calculando data de fechamento...
+                  </span>
+                </div>
+                <p id="partner-open-cycle-detail" class="text-[11px] text-slate-400 mt-1">
+                  Leitura ao vivo do plano atual + excedentes reais (sem gravação antecipada no banco).
+                </p>
+              </div>
+            </div>
+            <div class="sm:text-right shrink-0 border-t sm:border-t-0 border-slate-800 pt-2 sm:pt-0">
+              <span class="block text-[10px] uppercase tracking-wider text-violet-300 font-bold">Valor parcial estimado</span>
+              <span id="partner-open-cycle-amount" class="text-lg font-black font-mono text-white">R$ 0,00</span>
+            </div>
+          </div>
+        </div>
+
         <div class="overflow-x-auto">
           <table class="w-full text-left border-collapse text-xs">
             <thead>
@@ -465,9 +496,33 @@
       document.getElementById('partner-plan-usage').innerText = usageText;
       document.getElementById('partner-kpi-contract-usage').innerText = usageText;
 
-      const pct = planLimit > 0 ? Math.min(100, Math.round((totalStores / planLimit) * 100)) : 0;
+      const pct = planLimit > 0 ? Math.round((totalStores / planLimit) * 100) : 0;
       document.getElementById('partner-kpi-contract-pct').innerText = `${pct}%`;
-      document.getElementById('partner-kpi-progress-bar').style.width = `${pct}%`;
+      document.getElementById('partner-kpi-progress-bar').style.width = `${Math.min(100, pct)}%`;
+
+      // Indicador ao vivo de Fatura Aberta (ciclo atual - somente leitura)
+      const overageFee = parseFloat(data.overageFee !== undefined ? data.overageFee : ((m && m.overageFee !== undefined) ? m.overageFee : 19.90));
+      const overageCount = Math.max(0, totalStores - planLimit);
+      const livePartialAmount = Number((planPrice + (overageCount * overageFee)).toFixed(2));
+      const dueDay = Math.min(Math.max(parseInt(p.dia_vencimento ?? p.diaVencimento ?? (data.faturaAberta && data.faturaAberta.diaVencimento) ?? 15, 10) || 15, 1), 31);
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const buildDue = (yr, mo) => new Date(yr, mo, Math.min(dueDay, new Date(yr, mo + 1, 0).getDate()));
+      let monthOffset = 0;
+      let dueDate = buildDue(today.getFullYear(), today.getMonth() + monthOffset);
+      let closingDate = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate() - 10);
+      while (closingDate.getTime() < today.getTime()) {
+        monthOffset += 1;
+        dueDate = buildDue(today.getFullYear(), today.getMonth() + monthOffset);
+        closingDate = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate() - 10);
+      }
+      const closingDateStr = `${String(closingDate.getDate()).padStart(2, '0')}/${String(closingDate.getMonth() + 1).padStart(2, '0')}/${closingDate.getFullYear()}`;
+      const openClosingEl = document.getElementById('partner-open-cycle-closing');
+      const openAmountEl = document.getElementById('partner-open-cycle-amount');
+      const openDetailEl = document.getElementById('partner-open-cycle-detail');
+      if (openClosingEl) openClosingEl.innerHTML = `O seu ciclo atual fecha em <strong class="text-white font-mono">${closingDateStr}</strong>.`;
+      if (openAmountEl) openAmountEl.innerText = `R$ ${livePartialAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      if (openDetailEl) openDetailEl.innerText = `Plano ${planName} (R$ ${planPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}) + ${overageCount} loja(s) excedente(s) × R$ ${overageFee.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
 
       // Renderiza Lojas e Faturas
       renderStoresList();
@@ -513,21 +568,31 @@
       const tbody = document.getElementById('partner-invoices-list');
       if (!tbody) return;
 
-      if (partnerInvoices.length === 0) {
+      const closedInvoices = (Array.isArray(partnerInvoices) ? partnerInvoices : []).filter(inv => {
+        if (!inv || !inv.id) return false;
+        if (inv.fechada === false || inv.isPreview === true || inv.isOpenCycle === true || inv.mock === true) return false;
+        const stNorm = String(inv.status || '').trim().toLowerCase();
+        if (!stNorm || ['aberta', 'aberto', 'em aberto', 'open', 'rascunho', 'draft', 'previsao', 'previsão'].includes(stNorm)) {
+          return false;
+        }
+        return true;
+      });
+
+      if (closedInvoices.length === 0) {
         tbody.innerHTML = '<tr><td colspan="5" class="p-6 text-center text-slate-500">Nenhuma fatura emitida ainda. As faturas são geradas no fechamento do ciclo mensal.</td></tr>';
         return;
       }
 
-      tbody.innerHTML = partnerInvoices.map(inv => `
+      tbody.innerHTML = closedInvoices.map(inv => `
         <tr class="hover:bg-slate-800/50 transition">
-          <td class="p-3.5 font-bold text-white">${inv.mesReferencia || 'Mês Atual'}</td>
-          <td class="p-3.5 text-slate-300">${inv.planoNome || 'Enterprise B2B'}</td>
-          <td class="p-3.5 font-bold text-emerald-400">R$ ${Number(inv.valorTotal || 1990).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+          <td class="p-3.5 font-bold text-white">${inv.mesReferencia || '-'}</td>
+          <td class="p-3.5 text-slate-300">${inv.nome_plano || inv.planoNome || '-'}</td>
+          <td class="p-3.5 font-bold text-emerald-400">R$ ${Number(inv.valorTotal || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
           <td class="p-3.5">
-            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">${(inv.status || 'PAGO').toUpperCase()}</span>
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">${String(inv.status || '').toUpperCase()}</span>
           </td>
           <td class="p-3.5 text-right">
-            <a href="/api/partner/invoices/pdf?invoiceId=${inv.id || ''}" target="_blank" class="px-2.5 py-1 rounded bg-indigo-600/30 text-indigo-300 hover:bg-indigo-600/50 text-[11px] font-bold">PDF Oficial 📄</a>
+            <a href="/api/partner/invoices/pdf?id=${encodeURIComponent(inv.id || '')}" target="_blank" class="px-2.5 py-1 rounded bg-indigo-600/30 text-indigo-300 hover:bg-indigo-600/50 text-[11px] font-bold">PDF Oficial 📄</a>
           </td>
         </tr>
       `).join('');

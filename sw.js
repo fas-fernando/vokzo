@@ -2,7 +2,7 @@
 // SERVICE WORKER - ALERTA VENCIMENTO (PWA CACHE BASE & OFFLINE FIRST)
 // =========================================================================
 
-const CACHE_NAME = 'alerta-pro-v4';
+const CACHE_NAME = 'alerta-pro-v6';
 
 const STATIC_ASSETS = [
   '/',

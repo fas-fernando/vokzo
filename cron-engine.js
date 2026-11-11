@@ -1,39 +1,22 @@
+'use strict';
+
 // =========================================================================
-// CRON ENGINE - ALERTA VENCIMENTO (DISPARO DE ALERTAS & RECIBO DE ROI)
-// =========================================================================
-// Este módulo gerencia os dois fluxos de engajamento e retenção:
-// 1. Motor Diário de Alertas (08:00): Dispara notificações no WhatsApp conforme
-//    a frequência configurada pelo lojista (Diário, Semanal ou Mensal).
-// 2. Recibo de ROI Mensal (Dia 1º do Mês): Agrega quantos lotes foram salvos
-//    no mês anterior e envia uma mensagem celebrativa de retenção.
+// CRON ENGINE - ALERTA VENCIMENTO (MYSQL ONLY + FATURAMENTO B2B)
 // =========================================================================
 
-const fs = require('fs');
-const path = require('path');
-
-const DB_PATH = path.join(__dirname, 'database.json');
-
-// Auxiliar para ler o banco de dados JSON / SQLite
-function loadDatabase() {
-  try {
-    if (fs.existsSync(DB_PATH)) {
-      return JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
-    }
-  } catch (e) {
-    console.error('Erro ao ler database.json no Cron:', e);
-  }
-  return { merchants: {}, products: [], repositores: {} };
-}
+const {
+  db,
+  initMysqlDatabase,
+  toMysqlDatetime,
+  getSettingJson,
+  getSettingValue,
+  DEFAULT_GLOBAL_SETTINGS
+} = require('./db-mysql');
+const { calculateOverageBilling } = require('./invoice-pdf');
+const { registerLog } = require('./audit-logger');
 
 function cleanDigits(str) {
   return ('' + (str || '')).replace(/\D/g, '');
-}
-
-function formatPhone(phone) {
-  const c = cleanDigits(phone);
-  if (c.length === 11) return `(${c.slice(0,2)}) ${c.slice(2,7)}-${c.slice(7)}`;
-  if (c.length === 10) return `(${c.slice(0,2)}) ${c.slice(2,6)}-${c.slice(6)}`;
-  return phone;
 }
 
 function daysDiff(dateStr, baseDate = new Date()) {
@@ -52,46 +35,72 @@ function realMonthsDiff(dateStr, baseDate = new Date()) {
   return (yearDiff * 12) + monthDiff;
 }
 
-// =========================================================================
-// 1. QUERIES SQL DE AGREGAÇÃO MENSAL (DOCUMENTAÇÃO E EQUIVALENTE SQLITE)
-// =========================================================================
-/*
--- QUERY SQLITE: Contagem de lotes/produtos salvos no mês anterior por Loja
-SELECT 
-    ownerPhone,
-    COUNT(id) AS lotes_salvos,
-    SUM(COALESCE(qty, 1)) AS total_unidades_salvas
-FROM produtos
-WHERE status = 'baixado'
-  AND tipo_baixa IN ('promocao_venda', 'vendido')
-  AND datetime(data_baixa) >= datetime('now', 'start of month', '-1 month')
-  AND datetime(data_baixa) < datetime('now', 'start of month')
-GROUP BY ownerPhone;
-*/
+function normalizeProductRow(row) {
+  let extra = {};
+  if (row && row.payload_json) {
+    try {
+      extra = JSON.parse(row.payload_json) || {};
+    } catch (e) {}
+  }
+  return Object.assign({}, extra, {
+    id: extra.id !== undefined ? extra.id : row.id,
+    ownerPhone: row.owner_phone || extra.ownerPhone || '',
+    name: row.name || extra.name || '',
+    batch: row.batch || extra.batch || 'S/L',
+    expiry: row.expiry || extra.expiry || '',
+    qty: row.qty !== undefined && row.qty !== null ? Number(row.qty) : (extra.qty || 1),
+    status: row.status || extra.status || 'ativo',
+    resolvedReason: row.resolved_reason || extra.resolvedReason || '',
+    tipo_baixa: extra.tipo_baixa || row.resolved_reason || '',
+    resolvedAt: row.resolved_at || extra.resolvedAt || '',
+    data_baixa: extra.data_baixa || row.resolved_at || '',
+    createdAt: extra.createdAt || row.data_cadastro || row.created_at || ''
+  });
+}
 
-// =========================================================================
-// 2. MOTOR DE DISPARO DE ALERTAS VERMELHOS (FREQUÊNCIA CONFIGURÁVEL)
-// =========================================================================
+async function loadMerchantsAndProductsFromMysql() {
+  await initMysqlDatabase();
+  const merchantRows = await db.all('SELECT * FROM lojistas');
+  const productRows = await db.all('SELECT * FROM lojistas_produtos');
+
+  const merchants = {};
+  for (const m of merchantRows) {
+    const phone = cleanDigits(m.telefone);
+    if (!phone) continue;
+    merchants[phone] = {
+      phone,
+      name: m.nome || 'Lojista',
+      pin: m.pin || '1234',
+      plano: m.plano || 'free',
+      status: m.status || 'ativo',
+      nicheMode: m.niche_mode || 'mercado',
+      redDays: m.red_days !== undefined && m.red_days !== null ? Number(m.red_days) : 7,
+      yellowDays: m.yellow_days !== undefined && m.yellow_days !== null ? Number(m.yellow_days) : 30,
+      redMonths: m.red_months !== undefined && m.red_months !== null ? Number(m.red_months) : 2,
+      yellowMonths: m.yellow_months !== undefined && m.yellow_months !== null ? Number(m.yellow_months) : 6,
+      frequencia_alerta: m.frequencia_alerta || 'diario'
+    };
+  }
+
+  return { merchants, products: productRows.map(normalizeProductRow) };
+}
+
 async function runDailyRedAlerts(simulatedDate = new Date()) {
   const now = new Date(simulatedDate);
-  const dayOfWeek = now.getDay(); // 0 = Domingo, 5 = Sexta-feira
-  const dayOfMonth = now.getDate(); // 1 = Primeiro dia do mês
+  const dayOfWeek = now.getDay();
+  const dayOfMonth = now.getDate();
 
-  console.log(`\n⏰ [CRON ALERTA 08:00]: Executando checagem de Alertas Vermelhos (${now.toISOString().split('T')[0]} - Dia ${dayOfMonth}, DiaSemana: ${dayOfWeek})...`);
+  console.log(`\n⏰ [CRON ALERTA 08:00]: Executando checagem de Alertas Vermelhos no MySQL (${now.toISOString().split('T')[0]} - Dia ${dayOfMonth}, DiaSemana: ${dayOfWeek})...`);
 
-  const db = loadDatabase();
-  const merchants = db.merchants || {};
-  const products = db.products || [];
-
+  const { merchants, products } = await loadMerchantsAndProductsFromMysql();
   const executionLog = [];
 
   for (const phoneKey of Object.keys(merchants)) {
     const merchant = merchants[phoneKey];
     const cleanPhone = cleanDigits(merchant.phone || phoneKey);
     const storeName = merchant.name || 'Sua Loja';
-    const frequencia = merchant.frequencia_alerta || 'diario'; // 'diario', 'semanal', 'mensal', 'desativado'
+    const frequencia = merchant.frequencia_alerta || 'diario';
 
-    // Filtro de Frequência Rigoroso exigido:
     let shouldSendToday = false;
     let reason = '';
 
@@ -102,10 +111,10 @@ async function runDailyRedAlerts(simulatedDate = new Date()) {
       shouldSendToday = true;
       reason = 'Frequência diária';
     } else if (frequencia === 'semanal') {
-      shouldSendToday = (dayOfWeek === 5); // Sexta-feira
+      shouldSendToday = (dayOfWeek === 5);
       reason = shouldSendToday ? 'Sexta-feira (Disparo semanal)' : 'Aguardando próxima sexta-feira';
     } else if (frequencia === 'mensal') {
-      shouldSendToday = (dayOfMonth === 1); // Dia 1º do mês
+      shouldSendToday = (dayOfMonth === 1);
       reason = shouldSendToday ? 'Dia 1º (Disparo mensal)' : 'Aguardando dia 1º do mês';
     }
 
@@ -114,7 +123,6 @@ async function runDailyRedAlerts(simulatedDate = new Date()) {
       continue;
     }
 
-    // Busca produtos vermelhos ativos da loja
     const isFarmacia = (merchant.nicheMode === 'farmacia');
     const redLimit = isFarmacia ? (merchant.redMonths || 2) : (merchant.redDays || 7);
 
@@ -124,11 +132,8 @@ async function runDailyRedAlerts(simulatedDate = new Date()) {
     });
 
     const redItems = storeProducts.filter(p => {
-      if (isFarmacia) {
-        return realMonthsDiff(p.expiry, now) <= redLimit;
-      } else {
-        return daysDiff(p.expiry, now) <= redLimit;
-      }
+      if (isFarmacia) return realMonthsDiff(p.expiry, now) <= redLimit;
+      return daysDiff(p.expiry, now) <= redLimit;
     });
 
     if (redItems.length === 0) {
@@ -136,13 +141,12 @@ async function runDailyRedAlerts(simulatedDate = new Date()) {
       continue;
     }
 
-    // Monta a mensagem de alerta oficial
     let msg = `🚨 *ALERTA DE VENCIMENTO - ${storeName}*\n`;
     msg += `Olá! Identificamos *${redItems.length} itens críticos* na cor Vermelha precisando de queima de estoque urgente:\n\n`;
 
     redItems.slice(0, 5).forEach(item => {
       const diff = isFarmacia ? realMonthsDiff(item.expiry, now) : daysDiff(item.expiry, now);
-      const diffText = isFarmacia 
+      const diffText = isFarmacia
         ? (diff <= 0 ? 'Vence este mês' : `Faltam ${diff}m`)
         : (diff <= 0 ? (diff === 0 ? 'Vence HOJE!' : `Venceu há ${Math.abs(diff)}d!`) : `Vence em ${diff}d`);
       msg += `• *${item.name}* (Lote: ${item.batch || 'S/L'}) - ${diffText}\n`;
@@ -170,25 +174,15 @@ async function runDailyRedAlerts(simulatedDate = new Date()) {
   return { success: true, dispatchedCount: executionLog.length, logs: executionLog };
 }
 
-// =========================================================================
-// 3. RECIBO DE ROI MENSAL (EXECUTADO NO DIA 1º DE CADA MÊS)
-// =========================================================================
 async function runMonthlyRoiRecap(simulatedDate = new Date()) {
   const now = new Date(simulatedDate);
-  const dayOfMonth = now.getDate();
+  console.log(`\n📊 [CRON ROI MENSAL]: Executando consolidação de economia no MySQL (${now.toISOString().split('T')[0]})...`);
 
-  console.log(`\n📊 [CRON ROI MENSAL]: Executando consolidação de economia do mês anterior (${now.toISOString().split('T')[0]})...`);
-
-  // Determina o intervalo do mês anterior
-  // Exemplo: se hoje é 01/11/2026, analisa de 01/10/2026 00:00:00 até 31/10/2026 23:59:59
   const prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   const startOfPrevMonth = new Date(prevMonthDate.getFullYear(), prevMonthDate.getMonth(), 1, 0, 0, 0);
   const endOfPrevMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
 
-  const db = loadDatabase();
-  const merchants = db.merchants || {};
-  const products = db.products || [];
-
+  const { merchants, products } = await loadMerchantsAndProductsFromMysql();
   const roiDispatches = [];
 
   for (const phoneKey of Object.keys(merchants)) {
@@ -196,17 +190,14 @@ async function runMonthlyRoiRecap(simulatedDate = new Date()) {
     const cleanPhone = cleanDigits(merchant.phone || phoneKey);
     const storeName = merchant.name || 'Lojista';
 
-    // Agregação dos lotes/produtos salvos no mês anterior
     const savedItems = products.filter(p => {
       const owner = cleanDigits(p.ownerPhone || '11987654321');
       if (owner !== cleanPhone) return false;
       if (p.status !== 'baixado') return false;
 
-      // Validação de tipo de baixa: 'promocao_venda' ou 'vendido'
       const isSuccess = (p.tipo_baixa === 'promocao_venda' || p.resolvedReason === 'promocao_venda' || p.resolvedReason === 'vendido');
       if (!isSuccess) return false;
 
-      // Data da baixa
       const baixaDateStr = p.data_baixa || p.resolvedAt || p.createdAt;
       if (!baixaDateStr) return false;
       const baixaTime = new Date(baixaDateStr).getTime();
@@ -214,20 +205,12 @@ async function runMonthlyRoiRecap(simulatedDate = new Date()) {
       return (baixaTime >= startOfPrevMonth.getTime() && baixaTime <= endOfPrevMonth.getTime());
     });
 
-    const quantidadeProdutos = savedItems.length;
-
-    // Se o lojista teve lotes salvos (ou se for simulação para comprovação do valor entregue)
-    const lotesCount = Math.max(quantidadeProdutos, savedItems.length);
-
-    // Mensagem Obrigatória Padronizada pela Regra de Negócio:
-    // "📊 Fechamento do Mês - Alerta Vencimento!
-    // Fala, [Nome do Lojista]! No último mês, o nosso sistema mapeou e ajudou a salvar *{quantidade_produtos} lotes* de produtos antes do vencimento na sua loja. Parabéns pela gestão eficiente! Estamos juntos para lucrar mais neste mês."
-    const retentionMessage = 
+    const lotesCount = savedItems.length;
+    const retentionMessage =
 `📊 Fechamento do Mês - Alerta Vencimento!
 Fala, ${storeName}! No último mês, o nosso sistema mapeou e ajudou a salvar *${lotesCount || 12} lotes* de produtos antes do vencimento na sua loja. Parabéns pela gestão eficiente! Estamos juntos para lucrar mais neste mês.`;
 
     console.log(` 💎 [RECIBO DE ROI DISPARADO]: Para ${storeName} (${cleanPhone}) | Lotes salvos: ${lotesCount || 12}`);
-    console.log(`    "${retentionMessage.replace(/\n/g, ' ')}"`);
 
     roiDispatches.push({
       storeName,
@@ -241,18 +224,189 @@ Fala, ${storeName}! No último mês, o nosso sistema mapeou e ajudou a salvar *$
   return { success: true, count: roiDispatches.length, dispatches: roiDispatches };
 }
 
-// =========================================================================
-// 4. AGENDADOR AUTOMÁTICO EM SEGUNDO PLANO (NATIVE INTERVAL SCHEDULER)
-// =========================================================================
+function getNextDueDate(baseDate, diaVencimento) {
+  const today = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate());
+  const dueDay = Math.min(Math.max(parseInt(diaVencimento, 10) || 15, 1), 31);
+
+  const lastDayCurrentMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+  let candidate = new Date(today.getFullYear(), today.getMonth(), Math.min(dueDay, lastDayCurrentMonth));
+
+  if (candidate.getTime() < today.getTime()) {
+    const nextMonthTotal = today.getMonth() + 1;
+    const nextYear = today.getFullYear() + Math.floor(nextMonthTotal / 12);
+    const nextMonth = nextMonthTotal % 12;
+    const lastDayNextMonth = new Date(nextYear, nextMonth + 1, 0).getDate();
+    candidate = new Date(nextYear, nextMonth, Math.min(dueDay, lastDayNextMonth));
+  }
+  return candidate;
+}
+
+function getOpenBillingCycleInfo(baseDate, diaVencimento) {
+  const ref = baseDate ? new Date(baseDate) : new Date();
+  const today = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate());
+  let dueDate = getNextDueDate(today, diaVencimento);
+  let closingDate = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate() - 10);
+
+  if (closingDate.getTime() < today.getTime()) {
+    const afterDue = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate() + 1);
+    dueDate = getNextDueDate(afterDue, diaVencimento);
+    closingDate = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate() - 10);
+  }
+
+  const diffToClosingDays = Math.round(
+    (Date.UTC(closingDate.getFullYear(), closingDate.getMonth(), closingDate.getDate()) -
+      Date.UTC(today.getFullYear(), today.getMonth(), today.getDate())) /
+      (1000 * 60 * 60 * 24)
+  );
+
+  return { dueDate, closingDate, diffToClosingDays };
+}
+
+async function runPartnerBillingAutomation(simulatedDate = new Date()) {
+  await initMysqlDatabase();
+  const now = new Date(simulatedDate);
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  const [partnerRows, storeRows, invoiceRows, planRows, gs] = await Promise.all([
+    db.all('SELECT * FROM parceiros'),
+    db.all('SELECT * FROM parceiro_lojas'),
+    db.all('SELECT id, parceiro_id, mes_referencia FROM faturas_parceiros'),
+    db.all('SELECT * FROM planos_b2b'),
+    getSettingJson('globalSettings', DEFAULT_GLOBAL_SETTINGS)
+  ]);
+
+  const overageSettingFee = await getSettingValue('overage_fee', '');
+  const overageFee = parseFloat(
+    (gs && gs.overageFee) || overageSettingFee || process.env.OVERAGE_FEE || 19.90
+  ) || 19.90;
+
+  const b2bPlans = {};
+  for (const pl of planRows) b2bPlans[pl.id] = pl;
+
+  const monthsPt = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+  const generated = [];
+
+  for (const partner of partnerRows) {
+    if (!partner) continue;
+    const statusNorm = String(partner.status || 'ATIVO').trim().toUpperCase();
+    if (statusNorm !== 'ATIVO') continue;
+
+    const partnerDueDay = Math.min(Math.max(parseInt(partner.dia_vencimento ?? 15, 10) || 15, 1), 31);
+    const dueDate = getNextDueDate(today, partnerDueDay);
+    const closingDate = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate() - 10);
+    const diffDays = Math.round(
+      (Date.UTC(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate()) -
+        Date.UTC(today.getFullYear(), today.getMonth(), today.getDate())) /
+        (1000 * 60 * 60 * 24)
+    );
+    const isExactClosingDay =
+      today.getFullYear() === closingDate.getFullYear() &&
+      today.getMonth() === closingDate.getMonth() &&
+      today.getDate() === closingDate.getDate();
+
+    if (diffDays !== 10 || !isExactClosingDay) continue;
+
+    const pIdUpper = String(partner.id || '').toUpperCase();
+    const mesReferencia = `${monthsPt[dueDate.getMonth()]} / ${dueDate.getFullYear()}`;
+    const alreadyExists = invoiceRows.some(inv =>
+      inv &&
+      String(inv.parceiro_id || '').toUpperCase() === pIdUpper &&
+      String(inv.mes_referencia || '').toLowerCase() === mesReferencia.toLowerCase()
+    );
+    if (alreadyExists) continue;
+
+    const stores = storeRows.filter(s => String(s.parceiro_id || '').toUpperCase() === pIdUpper);
+    const planRef = b2bPlans[partner.plano_id] || {};
+    const planLimit = parseInt(planRef.limite_lojas || 50, 10);
+    const planPrice = parseFloat(planRef.valor_mensal !== undefined ? planRef.valor_mensal : 390.00);
+
+    const billing = calculateOverageBilling(
+      { id: partner.id, name: partner.nome, limite_lojas: planLimit, valor_mensal: planPrice },
+      stores,
+      overageFee
+    );
+
+    const closingStr = `${String(closingDate.getDate()).padStart(2, '0')}/${String(closingDate.getMonth() + 1).padStart(2, '0')}/${closingDate.getFullYear()}`;
+    const dueStr = `${String(dueDate.getDate()).padStart(2, '0')}/${String(dueDate.getMonth() + 1).padStart(2, '0')}/${dueDate.getFullYear()}`;
+    const partnerSuffix = String(partner.id || '').replace(/[^a-zA-Z0-9]/g, '').slice(-6).toUpperCase();
+    const invoiceId = `FAT-${dueDate.getFullYear()}-${String(dueDate.getMonth() + 1).padStart(2, '0')}-${partnerSuffix}`;
+
+    await db.run(
+      `INSERT INTO faturas_parceiros (
+        id, parceiro_id, plano_id, nome_plano, mes_referencia, lojas_cobradas, limite_lojas,
+        excedentes_qtd, overage_fee, overage_total, valor_mensal, valor_total, status,
+        fechada, data_fechamento, data_vencimento, auto_generated, snapshot_at, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        invoiceId,
+        partner.id,
+        partner.plano_id || 'plano_starter',
+        planRef.nome_plano || 'Starter',
+        mesReferencia,
+        billing.totalLojasAtivas,
+        planLimit,
+        billing.excedentesQtd,
+        billing.overageFee,
+        billing.overageTotal,
+        billing.valorMensal,
+        billing.valorFinal,
+        'Pendente',
+        1,
+        closingStr,
+        dueStr,
+        1,
+        now.toISOString(),
+        toMysqlDatetime(now)
+      ]
+    );
+
+    const newInvoice = {
+      id: invoiceId,
+      partnerId: partner.id,
+      mesReferencia,
+      nome_plano: planRef.nome_plano || 'Starter',
+      limite_lojas: planLimit,
+      lojasCobradas: billing.totalLojasAtivas,
+      lojas_cobradas: billing.totalLojasAtivas,
+      excedentesQtd: billing.excedentesQtd,
+      overageFee: billing.overageFee,
+      overageTotal: billing.overageTotal,
+      valorUnitario: billing.overageFee,
+      valor_mensal: billing.valorMensal,
+      valorTotal: billing.valorFinal,
+      status: 'Pendente',
+      fechada: true,
+      dataFechamento: closingStr,
+      dataVencimento: dueStr,
+      snapshotAt: now.toISOString(),
+      createdAt: now.toISOString(),
+      autoGenerated: true
+    };
+
+    generated.push(newInvoice);
+    await registerLog(partner.id, 'SISTEMA', 'AUTO_GERAR_FATURA_B2B', {
+      invoiceId,
+      mesReferencia,
+      dia_vencimento: partnerDueDay,
+      dataVencimento: dueStr,
+      valorTotal: billing.valorFinal
+    });
+    console.log(`🧾 [FATURAMENTO AUTOMÁTICO -10d]: Fatura ${invoiceId} gerada para ${partner.nome} (Venc.: ${dueStr} | Total: R$ ${billing.valorFinal.toFixed(2)})`);
+  }
+
+  return { success: true, generatedCount: generated.length, invoices: generated };
+}
+
 let lastDailyRunKey = '';
 let lastMonthlyRunKey = '';
+let lastBillingRunKey = '';
 
 function startScheduler() {
-  console.log('⏰ [CRON ENGINE]: Agendador de automações de WhatsApp iniciado.');
+  console.log('⏰ [CRON ENGINE]: Agendador de automações MySQL iniciado.');
+  console.log('   • Faturamento B2B (-10 dias): Programado diariamente às 06:00');
   console.log('   • Alertas Vermelhos: Programados para as 08:00 (respeitando frequência da loja)');
   console.log('   • Recibo de ROI Mensal: Programado para o dia 1º de cada mês às 09:00');
 
-  // Checa a cada 60 segundos se é hora de disparar
   setInterval(() => {
     const now = new Date();
     const hours = now.getHours();
@@ -260,13 +414,16 @@ function startScheduler() {
     const dateKey = now.toISOString().split('T')[0];
     const monthKey = `${now.getFullYear()}-${now.getMonth() + 1}`;
 
-    // Disparo Diário às 08:00
+    if (hours === 6 && minutes === 0 && lastBillingRunKey !== dateKey) {
+      lastBillingRunKey = dateKey;
+      runPartnerBillingAutomation(now).catch(err => console.error('Erro no cron de faturamento B2B:', err));
+    }
+
     if (hours === 8 && minutes === 0 && lastDailyRunKey !== dateKey) {
       lastDailyRunKey = dateKey;
       runDailyRedAlerts(now).catch(err => console.error('Erro no cron diário:', err));
     }
 
-    // Disparo Mensal de ROI no Dia 1º às 09:00
     if (now.getDate() === 1 && hours === 9 && minutes === 0 && lastMonthlyRunKey !== monthKey) {
       lastMonthlyRunKey = monthKey;
       runMonthlyRoiRecap(now).catch(err => console.error('Erro no cron mensal:', err));
@@ -274,25 +431,33 @@ function startScheduler() {
   }, 60 * 1000);
 }
 
-// Execução via linha de comando direta (ex: Windows Task Scheduler ou Crontab)
 if (require.main === module) {
   const arg = (process.argv[2] || '').toLowerCase();
   if (arg === '--daily') {
     runDailyRedAlerts().then(() => process.exit(0));
   } else if (arg === '--monthly') {
     runMonthlyRoiRecap().then(() => process.exit(0));
+  } else if (arg === '--billing') {
+    runPartnerBillingAutomation().then(res => {
+      console.log('✅ Rotina de faturamento B2B concluída:', res.generatedCount, 'fatura(s) gerada(s).');
+      process.exit(0);
+    });
   } else {
     console.log('--- EXECUTANDO TESTE COMPLETO DOS CRON JOBS ---');
     (async () => {
+      await runPartnerBillingAutomation();
       await runDailyRedAlerts();
       await runMonthlyRoiRecap();
-      console.log('✅ Ambos os cron jobs executaram com sucesso.');
+      console.log('✅ Todos os cron jobs executaram com sucesso.');
       process.exit(0);
     })();
   }
 }
 
 module.exports = {
+  getNextDueDate,
+  getOpenBillingCycleInfo,
+  runPartnerBillingAutomation,
   runDailyRedAlerts,
   runMonthlyRoiRecap,
   startScheduler

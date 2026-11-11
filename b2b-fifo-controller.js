@@ -1,39 +1,8 @@
-const path = require('path');
+'use strict';
+
+const { db, pool, initMysqlDatabase, toMysqlDatetime } = require('./db-mysql');
 const { registerLog } = require('./audit-logger');
 
-const SQLITE_DB_PATH = path.join(__dirname, 'vokzo_audit.db');
-let sqliteDb = null;
-
-/**
- * Obtém/inicializa conexão SQLite (node:sqlite) e garante a tabela Produtos_Lotes.
- */
-function getFifoDb() {
-  if (sqliteDb) return sqliteDb;
-  const { DatabaseSync } = require('node:sqlite');
-  sqliteDb = new DatabaseSync(SQLITE_DB_PATH);
-  sqliteDb.exec(`
-    CREATE TABLE IF NOT EXISTS Produtos_Lotes (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      tenant_id TEXT NOT NULL,
-      codigo_barras TEXT NOT NULL,
-      nome TEXT NOT NULL,
-      lote TEXT DEFAULT 'LT-PDV',
-      data_validade TEXT NOT NULL,
-      quantidade INTEGER NOT NULL DEFAULT 0,
-      preco_unitario REAL DEFAULT 0,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE(tenant_id, codigo_barras, data_validade)
-    );
-    CREATE INDEX IF NOT EXISTS idx_lotes_fifo
-      ON Produtos_Lotes(tenant_id, codigo_barras, data_validade ASC);
-  `);
-  return sqliteDb;
-}
-
-/**
- * Converte data DD/MM/AAAA ou MM/AAAA para ISO YYYY-MM-DD para ordenação FIFO precisa.
- */
 function normalizeDateIso(rawDate) {
   const str = String(rawDate || '').trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
@@ -65,14 +34,8 @@ function daysUntilExpiry(isoDate) {
   return Math.ceil((target.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
 }
 
-/**
- * Middleware de Segurança B2B: requirePartnerAuth(req, res, next)
- * Exige headers obrigatórios `x-api-key` e `x-tenant-id`.
- * Valida se a API Key existe e se o Tenant ID pertence ao Parceiro.
- * Em sucesso, injeta `req.store_id = tenantId`.
- */
-function createRequirePartnerAuth(readDbFn) {
-  return function requirePartnerAuth(req, res, next) {
+function createRequirePartnerAuth() {
+  return async function requirePartnerAuth(req, res, next) {
     const apiKey = String(req.headers['x-api-key'] || '').trim();
     const tenantId = String(req.headers['x-tenant-id'] || '').trim();
 
@@ -85,81 +48,101 @@ function createRequirePartnerAuth(readDbFn) {
       return false;
     }
 
-    const db = readDbFn();
-    const partnersMap = db.partners || {};
-    const allStores = Array.isArray(db.partnerStores) ? db.partnerStores : [];
+    try {
+      await initMysqlDatabase();
+      const storeRow = await db.get(
+        'SELECT id, parceiro_id, nome_loja, cnpj, api_key, status, requisicoes_mes, bloqueado_em, is_overage, created_at FROM parceiro_lojas WHERE id = ?',
+        [tenantId]
+      );
 
-    // Localiza a loja pelo tenant_id
-    const store = allStores.find(s => s && (s.id === tenantId || s.tenant_id === tenantId));
-    if (!store) {
-      res.writeHead(401, { 'Content-Type': 'application/json; charset=utf-8' });
-      res.end(JSON.stringify({
-        success: false,
-        error: 'Unauthorized: Tenant ID (x-tenant-id) não encontrado.'
-      }));
+      if (!storeRow) {
+        res.writeHead(401, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({
+          success: false,
+          error: 'Unauthorized: Tenant ID (x-tenant-id) não encontrado.'
+        }));
+        return false;
+      }
+
+      const store = {
+        id: storeRow.id,
+        tenant_id: storeRow.id,
+        parceiro_id: storeRow.parceiro_id,
+        partnerId: storeRow.parceiro_id,
+        name: storeRow.nome_loja,
+        nome_loja: storeRow.nome_loja,
+        cnpj: storeRow.cnpj,
+        apiKey: storeRow.api_key,
+        api_key: storeRow.api_key,
+        status: storeRow.status || 'ativo',
+        isOverage: Boolean(storeRow.is_overage),
+        requisicoesMes: Number(storeRow.requisicoes_mes || 0)
+      };
+
+      const partnerRow = store.parceiro_id
+        ? await db.get('SELECT id, nome, cnpj, email, telefone, status, plano_id, api_key, dia_vencimento FROM parceiros WHERE id = ?', [store.parceiro_id])
+        : null;
+      const keyOwnerRow = !partnerRow || partnerRow.api_key !== apiKey
+        ? await db.get('SELECT id, nome, cnpj, email, telefone, status, plano_id, api_key, dia_vencimento FROM parceiros WHERE api_key = ?', [apiKey])
+        : partnerRow;
+
+      const storeMatchesKey = store.api_key && store.api_key === apiKey;
+      const partnerMatchesKey = partnerRow && partnerRow.api_key && partnerRow.api_key === apiKey;
+      const belongsToKeyOwner = keyOwnerRow && keyOwnerRow.id === store.parceiro_id;
+
+      if (!storeMatchesKey && !partnerMatchesKey && !belongsToKeyOwner) {
+        res.writeHead(401, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({
+          success: false,
+          error: 'Unauthorized: x-api-key inválida ou sem permissão para este x-tenant-id.'
+        }));
+        return false;
+      }
+
+      const partner = partnerRow || keyOwnerRow || null;
+      if (partner) {
+        const pStatus = String(partner.status || 'ativo').toLowerCase();
+        if (pStatus === 'bloqueado' || pStatus === 'inativo') {
+          res.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({
+            success: false,
+            code: 'PARTNER_BLOCKED',
+            error: 'Acesso suspenso: Parceiro bloqueado pelo administrador.'
+          }));
+          return false;
+        }
+      }
+
+      const sStatus = String(store.status || 'ativo').toLowerCase();
+      if (sStatus === 'bloqueado' || sStatus === 'bloqueada' || sStatus === 'inativo') {
+        res.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({
+          success: false,
+          code: 'STORE_BLOCKED',
+          error: 'Acesso revogado: Esta loja está bloqueada pelo parceiro integrador.'
+        }));
+        return false;
+      }
+
+      req.store_id = store.id;
+      req.tenant_id = store.id;
+      req.partner_id = (partner && partner.id) || store.parceiro_id || null;
+      req.store = store;
+      req.partner = partner;
+
+      if (typeof next === 'function') await next();
+      return true;
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ success: false, error: 'Erro interno na autenticação B2B: ' + err.message }));
       return false;
     }
-
-    const partnerId = store.partnerId || store.parceiro_id;
-    const partner = partnerId ? partnersMap[partnerId] : null;
-
-    // Valida se a API Key pertence ao Parceiro dono do Tenant OU diretamente à loja do Parceiro
-    const partnerMatchesKey = partner && partner.apiKey && partner.apiKey === apiKey;
-    const storeMatchesKey = store.apiKey && store.apiKey === apiKey;
-
-    // Caso a chave pertença a outro parceiro, também verifica pertencimento
-    const keyOwnerPartner = Object.values(partnersMap).find(p => p && p.apiKey === apiKey);
-    const belongsToKeyOwner = keyOwnerPartner && (keyOwnerPartner.id === partnerId);
-
-    if (!storeMatchesKey && !partnerMatchesKey && !belongsToKeyOwner) {
-      res.writeHead(401, { 'Content-Type': 'application/json; charset=utf-8' });
-      res.end(JSON.stringify({
-        success: false,
-        error: 'Unauthorized: x-api-key inválida ou sem permissão para este x-tenant-id.'
-      }));
-      return false;
-    }
-
-    // Verifica se o Parceiro ou Loja está bloqueado
-    if (partner && (String(partner.status || 'ativo').toLowerCase() === 'bloqueado' || String(partner.status || '').toLowerCase() === 'inativo')) {
-      res.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8' });
-      res.end(JSON.stringify({
-        success: false,
-        code: 'PARTNER_BLOCKED',
-        error: 'Acesso suspenso: Parceiro bloqueado pelo administrador.'
-      }));
-      return false;
-    }
-
-    if (String(store.status || 'ativo').toLowerCase() === 'bloqueado' || String(store.status || '').toLowerCase() === 'bloqueada' || String(store.status || '').toLowerCase() === 'inativo') {
-      res.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8' });
-      res.end(JSON.stringify({
-        success: false,
-        code: 'STORE_BLOCKED',
-        error: 'Acesso revogado: Esta loja está bloqueada pelo parceiro integrador.'
-      }));
-      return false;
-    }
-
-    // Injeta credenciais validadas no request para as rotas consumirem
-    req.store_id = store.id;
-    req.tenant_id = store.id;
-    req.partner_id = partnerId || (keyOwnerPartner && keyOwnerPartner.id) || null;
-    req.store = store;
-    req.partner = partner || keyOwnerPartner || null;
-
-    if (typeof next === 'function') next();
-    return true;
   };
 }
 
-/**
- * Controller: POST /api/v1/products/sync
- * Executa Upsert em Produtos_Lotes no SQLite para req.store_id.
- * Se (tenant_id, codigo_barras, data_validade) já existir, soma a quantidade.
- */
-function handleProductSync(req, res, payload, dbHelpers) {
+async function handleProductSync(req, res, payload) {
   try {
+    await initMysqlDatabase();
     const tenantId = req.store_id;
     const codigoBarras = String(payload.codigo_barras || payload.ean || '').trim();
     const nome = String(payload.nome || payload.name || 'Produto PDV').trim();
@@ -188,61 +171,57 @@ function handleProductSync(req, res, payload, dbHelpers) {
 
     const dataValidadeIso = normalizeDateIso(rawValidade);
     const nowIso = new Date().toISOString();
-    const fdb = getFifoDb();
+    const nowMysql = toMysqlDatetime(nowIso);
 
     let operation = 'INSERTED';
     let batchRecord = null;
 
-    fdb.exec('BEGIN TRANSACTION');
+    const conn = await pool.getConnection();
     try {
-      const existing = fdb.prepare(`
-        SELECT id, quantidade
-        FROM Produtos_Lotes
-        WHERE tenant_id = ? AND codigo_barras = ? AND data_validade = ?
-      `).get(tenantId, codigoBarras, dataValidadeIso);
+      await conn.beginTransaction();
+
+      const [existingRows] = await conn.execute(
+        'SELECT id, quantidade FROM Produtos_Lotes WHERE tenant_id = ? AND codigo_barras = ? AND data_validade = ? FOR UPDATE',
+        [tenantId, codigoBarras, dataValidadeIso]
+      );
+      const existing = existingRows && existingRows[0];
 
       if (existing) {
         const novaQtd = (parseInt(existing.quantidade, 10) || 0) + quantidade;
-        fdb.prepare(`
-          UPDATE Produtos_Lotes
-          SET nome = ?, lote = ?, quantidade = ?, preco_unitario = ?, updated_at = ?
-          WHERE id = ?
-        `).run(nome, lote, novaQtd, precoUnitario, nowIso, existing.id);
-
+        await conn.execute(
+          'UPDATE Produtos_Lotes SET nome = ?, lote = ?, quantidade = ?, preco_unitario = ?, updated_at = ? WHERE id = ?',
+          [nome, lote, novaQtd, precoUnitario, nowMysql, existing.id]
+        );
         operation = 'UPDATED';
-        batchRecord = fdb.prepare('SELECT * FROM Produtos_Lotes WHERE id = ?').get(existing.id);
+        const [rows] = await conn.execute('SELECT * FROM Produtos_Lotes WHERE id = ?', [existing.id]);
+        batchRecord = rows[0];
       } else {
-        const info = fdb.prepare(`
-          INSERT INTO Produtos_Lotes (tenant_id, codigo_barras, nome, lote, data_validade, quantidade, preco_unitario, updated_at, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(tenantId, codigoBarras, nome, lote, dataValidadeIso, quantidade, precoUnitario, nowIso, nowIso);
-
+        const [insertRes] = await conn.execute(
+          'INSERT INTO Produtos_Lotes (tenant_id, codigo_barras, nome, lote, data_validade, quantidade, preco_unitario, updated_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          [tenantId, codigoBarras, nome, lote, dataValidadeIso, quantidade, precoUnitario, nowMysql, nowMysql]
+        );
         operation = 'INSERTED';
-        batchRecord = fdb.prepare('SELECT * FROM Produtos_Lotes WHERE id = ?').get(Number(info.lastInsertRowid));
+        const [rows] = await conn.execute('SELECT * FROM Produtos_Lotes WHERE id = ?', [insertRes.insertId]);
+        batchRecord = rows[0];
       }
 
-      fdb.exec('COMMIT');
-    } catch (txErr) {
-      try { fdb.exec('ROLLBACK'); } catch (e) {}
-      throw txErr;
-    }
+      await conn.execute(
+        'UPDATE parceiro_lojas SET requisicoes_mes = COALESCE(requisicoes_mes, 0) + 1 WHERE id = ?',
+        [tenantId]
+      );
 
-    // Incrementa métricas de API da loja no database.json se helper fornecido
-    if (dbHelpers && dbHelpers.readDatabase && dbHelpers.writeDatabase) {
-      try {
-        const db = dbHelpers.readDatabase();
-        const st = (db.partnerStores || []).find(s => s.id === tenantId || s.tenant_id === tenantId);
-        if (st) {
-          st.requisicoesMes = (parseInt(st.requisicoesMes, 10) || 0) + 1;
-          dbHelpers.writeDatabase(db);
-        }
-      } catch (e) {}
+      await conn.commit();
+    } catch (txErr) {
+      await conn.rollback().catch(() => {});
+      throw txErr;
+    } finally {
+      conn.release();
     }
 
     const diff = daysUntilExpiry(dataValidadeIso);
     const isHardBlock = diff <= 0;
 
-    registerLog(tenantId, 'PARCEIRO', 'API_PRODUCT_SYNC', {
+    await registerLog(tenantId, 'PARCEIRO', 'API_PRODUCT_SYNC', {
       operation,
       codigo_barras: codigoBarras,
       data_validade: dataValidadeIso,
@@ -271,12 +250,9 @@ function handleProductSync(req, res, payload, dbHelpers) {
   }
 }
 
-/**
- * Controller: POST /api/v1/products/checkout
- * Baixa inteligente de estoque por FIFO (data_validade ASC) dentro de Transação SQLite.
- */
-function handleProductCheckout(req, res, payload, dbHelpers) {
+async function handleProductCheckout(req, res, payload) {
   try {
+    await initMysqlDatabase();
     const tenantId = req.store_id;
     const codigoBarras = String(payload.codigo_barras || payload.ean || '').trim();
     const quantidadeVendida = parseInt(
@@ -296,24 +272,27 @@ function handleProductCheckout(req, res, payload, dbHelpers) {
       return;
     }
 
-    const fdb = getFifoDb();
     const nowIso = new Date().toISOString();
+    const nowMysql = toMysqlDatetime(nowIso);
     const lotesAfetados = [];
     let restanteParaBaixar = quantidadeVendida;
     let totalBaixado = 0;
 
-    fdb.exec('BEGIN TRANSACTION');
+    const conn = await pool.getConnection();
     try {
-      // Busca todos os lotes ativos ordenados do mais próximo a vencer para o mais distante (FIFO)
-      const lotes = fdb.prepare(`
-        SELECT id, nome, lote, data_validade, quantidade
-        FROM Produtos_Lotes
-        WHERE tenant_id = ? AND codigo_barras = ? AND quantidade > 0
-        ORDER BY data_validade ASC, id ASC
-      `).all(tenantId, codigoBarras);
+      await conn.beginTransaction();
+
+      const [lotes] = await conn.execute(
+        `SELECT id, nome, lote, data_validade, quantidade
+         FROM Produtos_Lotes
+         WHERE tenant_id = ? AND codigo_barras = ? AND quantidade > 0
+         ORDER BY data_validade ASC, id ASC
+         FOR UPDATE`,
+        [tenantId, codigoBarras]
+      );
 
       if (!lotes || lotes.length === 0) {
-        fdb.exec('ROLLBACK');
+        await conn.rollback();
         res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({
           success: false,
@@ -329,12 +308,11 @@ function handleProductCheckout(req, res, payload, dbHelpers) {
         if (qtdLote <= 0) continue;
 
         if (qtdLote <= restanteParaBaixar) {
-          // Lote atual zera completamente -> DELETE
           const consumido = qtdLote;
           restanteParaBaixar -= consumido;
           totalBaixado += consumido;
 
-          fdb.prepare('DELETE FROM Produtos_Lotes WHERE id = ?').run(loteRow.id);
+          await conn.execute('DELETE FROM Produtos_Lotes WHERE id = ?', [loteRow.id]);
 
           lotesAfetados.push({
             lote_id: loteRow.id,
@@ -345,14 +323,15 @@ function handleProductCheckout(req, res, payload, dbHelpers) {
             acao: 'DELETE_LOTE_ZERADO'
           });
         } else {
-          // Lote atual possui saldo sobrando -> UPDATE
           const consumido = restanteParaBaixar;
           const novaQtd = qtdLote - consumido;
           restanteParaBaixar = 0;
           totalBaixado += consumido;
 
-          fdb.prepare('UPDATE Produtos_Lotes SET quantidade = ?, updated_at = ? WHERE id = ?')
-            .run(novaQtd, nowIso, loteRow.id);
+          await conn.execute(
+            'UPDATE Produtos_Lotes SET quantidade = ?, updated_at = ? WHERE id = ?',
+            [novaQtd, nowMysql, loteRow.id]
+          );
 
           lotesAfetados.push({
             lote_id: loteRow.id,
@@ -365,24 +344,20 @@ function handleProductCheckout(req, res, payload, dbHelpers) {
         }
       }
 
-      fdb.exec('COMMIT');
+      await conn.execute(
+        'UPDATE parceiro_lojas SET requisicoes_mes = COALESCE(requisicoes_mes, 0) + 1 WHERE id = ?',
+        [tenantId]
+      );
+
+      await conn.commit();
     } catch (txErr) {
-      try { fdb.exec('ROLLBACK'); } catch (e) {}
+      await conn.rollback().catch(() => {});
       throw txErr;
+    } finally {
+      conn.release();
     }
 
-    if (dbHelpers && dbHelpers.readDatabase && dbHelpers.writeDatabase) {
-      try {
-        const db = dbHelpers.readDatabase();
-        const st = (db.partnerStores || []).find(s => s.id === tenantId || s.tenant_id === tenantId);
-        if (st) {
-          st.requisicoesMes = (parseInt(st.requisicoesMes, 10) || 0) + 1;
-          dbHelpers.writeDatabase(db);
-        }
-      } catch (e) {}
-    }
-
-    registerLog(tenantId, 'PARCEIRO', 'API_FIFO_CHECKOUT', {
+    await registerLog(tenantId, 'PARCEIRO', 'API_FIFO_CHECKOUT', {
       codigo_barras: codigoBarras,
       quantidade_vendida: quantidadeVendida,
       total_baixado: totalBaixado,
@@ -408,7 +383,6 @@ function handleProductCheckout(req, res, payload, dbHelpers) {
 }
 
 module.exports = {
-  getFifoDb,
   createRequirePartnerAuth,
   handleProductSync,
   handleProductCheckout

@@ -5,7 +5,6 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "share": "node share.js",
     "share:cf": "npx --yes untun tunnel --port 3000",
     "tunnel": "npx --yes localtunnel --port 3000"
   },
@@ -18,5 +17,8 @@
     "pix"
   ],
   "author": "Fas Alves Souza",
-  "license": "ISC"
+  "license": "ISC",
+  "dependencies": {
+    "mysql2": "^3.24.6"
+  }
 }
