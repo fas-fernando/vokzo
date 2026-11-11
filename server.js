@@ -34,7 +34,7 @@ const {
   findRepositorByPhoneMysql,
   deleteRepositorMysql
 } = require('./audit-logger');
-const { createRequirePartnerAuth, handleProductSync, handleProductCheckout } = require('./b2b-fifo-controller');
+const { createRequirePartnerAuth } = require('./b2b-fifo-controller');
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = __dirname;
@@ -918,15 +918,61 @@ async function handleApiRequest(req, res, pathname) {
     let authorized = false;
     await requirePartnerAuth(req, res, () => { authorized = true; });
     if (!authorized) return true;
-    try { await handleProductSync(req, res, await readJsonBody(req)); } catch (err) { sendJson(res, 400, { success: false, error: 'Payload JSON inválido: ' + err.message }); }
-    return true;
-  }
+    let conn;
+    try {
+      const { itens } = await readJsonBody(req);
+      if (!Array.isArray(itens) || itens.length === 0) {
+        sendJson(res, 400, {
+          success: false,
+          error: 'O payload deve conter um array "itens" com pelo menos 1 produto.'
+        });
+        return true;
+      }
 
-  if ((pathname === '/api/v1/products/checkout' || pathname === '/api/v1/checkout') && req.method === 'POST') {
-    let authorized = false;
-    await requirePartnerAuth(req, res, () => { authorized = true; });
-    if (!authorized) return true;
-    try { await handleProductCheckout(req, res, await readJsonBody(req)); } catch (err) { sendJson(res, 400, { success: false, error: 'Payload JSON inválido: ' + err.message }); }
+      for (let i = 0; i < itens.length; i++) {
+        const item = itens[i] || {};
+        const ean = String(item.codigo_barras || '').trim();
+        const nome = String(item.nome || '').trim();
+        const dataValidade = String(item.data_validade || '').trim();
+        const quantidade = Number(item.quantidade);
+
+        if (!ean || !nome || !dataValidade || !Number.isFinite(quantidade) || quantidade < 0) {
+          sendJson(res, 400, {
+            success: false,
+            error: `Item inválido no índice ${i}: informe codigo_barras, nome, data_validade e quantidade (>= 0).`
+          });
+          return true;
+        }
+      }
+
+      await initMysqlDatabase();
+      conn = await pool.getConnection();
+      await conn.beginTransaction();
+
+      for (const item of itens) {
+        await conn.execute(
+          'INSERT INTO lotes (codigo_barras, nome, data_validade, quantidade) VALUES (?, ?, ?, ?)',
+          [
+            String(item.codigo_barras).trim(),
+            String(item.nome).trim(),
+            String(item.data_validade).trim(),
+            Number(item.quantidade)
+          ]
+        );
+      }
+
+      await conn.commit();
+      sendJson(res, 200, {
+        success: true,
+        lotes_recebidos: itens.length,
+        mensagem: 'Sincronização em lote concluída.'
+      });
+    } catch (err) {
+      if (conn) await conn.rollback().catch(() => {});
+      sendJson(res, 500, { success: false, error: 'Erro ao sincronizar lote: ' + err.message });
+    } finally {
+      if (conn) conn.release();
+    }
     return true;
   }
 
@@ -1929,6 +1975,144 @@ async function handleApiRequest(req, res, pathname) {
       cleanupExpiredXmlFiles();
       sendJson(res, 200, { success: true, savedFile: savedFileName, retentionDays: 7, expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() });
     } catch (err) { sendJson(res, 500, { success: false, error: err.message }); }
+    return true;
+  }
+
+  // Rota 1: POST /api/vendas (Baixa em Cascata - FEFO)
+  if (pathname === '/api/vendas' && req.method === 'POST') {
+    let conn;
+    try {
+      const { codigo_barras, quantidade_vendida } = await readJsonBody(req);
+      const ean = String(codigo_barras || '').trim();
+      const qtdVendida = Number(quantidade_vendida);
+
+      if (!ean || !Number.isFinite(qtdVendida) || qtdVendida <= 0) {
+        sendJson(res, 400, { success: false, error: 'Informe codigo_barras e quantidade_vendida válida (> 0).' });
+        return true;
+      }
+
+      await initMysqlDatabase();
+      conn = await pool.getConnection();
+      await conn.beginTransaction();
+
+      const [lotes] = await conn.execute(
+        'SELECT id, quantidade, data_validade FROM lotes WHERE codigo_barras = ? AND quantidade > 0 ORDER BY data_validade ASC FOR UPDATE',
+        [ean]
+      );
+
+      let restante = qtdVendida;
+      const lotesAfetados = [];
+
+      for (const lote of lotes) {
+        if (restante <= 0) break;
+
+        const saldoAtual = Number(lote.quantidade);
+        const abatido = Math.min(saldoAtual, restante);
+        const novoSaldo = saldoAtual - abatido;
+
+        await conn.execute(
+          'UPDATE lotes SET quantidade = ? WHERE id = ?',
+          [novoSaldo, lote.id]
+        );
+
+        lotesAfetados.push({
+          lote_id: lote.id,
+          data_validade: lote.data_validade,
+          quantidade_anterior: saldoAtual,
+          quantidade_abatida: abatido,
+          quantidade_restante: novoSaldo
+        });
+
+        restante -= abatido;
+      }
+
+      if (restante > 0) {
+        await conn.rollback();
+        sendJson(res, 409, {
+          success: false,
+          error: 'Estoque insuficiente para concluir a venda.',
+          codigo_barras: ean,
+          quantidade_solicitada: qtdVendida,
+          quantidade_faltante: restante
+        });
+        return true;
+      }
+
+      await conn.commit();
+      sendJson(res, 200, {
+        success: true,
+        codigo_barras: ean,
+        quantidade_vendida: qtdVendida,
+        lotes_atualizados: lotesAfetados
+      });
+    } catch (err) {
+      if (conn) await conn.rollback().catch(() => {});
+      sendJson(res, 500, { success: false, error: 'Erro ao processar baixa FEFO: ' + err.message });
+    } finally {
+      if (conn) conn.release();
+    }
+    return true;
+  }
+
+  // Rota 2: PUT /api/lotes/ajuste (Ajuste Rápido de Inventário)
+  if (pathname === '/api/lotes/ajuste' && req.method === 'PUT') {
+    let conn;
+    try {
+      const { lote_id, nova_quantidade, usuario_id, motivo } = await readJsonBody(req);
+      const novaQtd = Number(nova_quantidade);
+
+      if (!lote_id || !Number.isFinite(novaQtd) || novaQtd < 0 || !usuario_id) {
+        sendJson(res, 400, { success: false, error: 'Informe lote_id, nova_quantidade (>= 0) e usuario_id.' });
+        return true;
+      }
+
+      await initMysqlDatabase();
+      conn = await pool.getConnection();
+      await conn.beginTransaction();
+
+      const [rows] = await conn.execute(
+        'SELECT id, quantidade FROM lotes WHERE id = ? FOR UPDATE',
+        [lote_id]
+      );
+
+      if (!rows || rows.length === 0) {
+        await conn.rollback();
+        sendJson(res, 404, { success: false, error: 'Lote não encontrado.' });
+        return true;
+      }
+
+      const quantidadeAtual = Number(rows[0].quantidade);
+      const diferenca = novaQtd - quantidadeAtual;
+      const dataMovimento = toMysqlDatetime(new Date());
+      const motivoAjuste = String(motivo || 'inventario_prateleira').trim();
+
+      await conn.execute(
+        'UPDATE lotes SET quantidade = ? WHERE id = ?',
+        [novaQtd, lote_id]
+      );
+
+      await conn.execute(
+        'INSERT INTO movimentacoes (lote_id, diferenca, usuario_id, motivo, data_movimento) VALUES (?, ?, ?, ?, ?)',
+        [lote_id, diferenca, usuario_id, motivoAjuste, dataMovimento]
+      );
+
+      await conn.commit();
+      sendJson(res, 200, {
+        success: true,
+        lote_id,
+        quantidade_anterior: quantidadeAtual,
+        nova_quantidade: novaQtd,
+        diferenca,
+        usuario_id,
+        motivo: motivoAjuste,
+        data_movimento: dataMovimento
+      });
+    } catch (err) {
+      if (conn) await conn.rollback().catch(() => {});
+      sendJson(res, 500, { success: false, error: 'Erro ao ajustar inventário do lote: ' + err.message });
+    } finally {
+      if (conn) conn.release();
+    }
     return true;
   }
 

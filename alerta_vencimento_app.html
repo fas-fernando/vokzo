@@ -1827,10 +1827,20 @@
               <div>
                 <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Payload JSON de Envio (Request Body):</span>
                 <pre class="bg-slate-950 p-3 rounded-xl border border-slate-800 font-mono text-[11px] text-slate-200 overflow-x-auto leading-relaxed">{
-  "codigo_barras": "7891000100103",
-  "nome": "Dipirona Monoidratada 500mg cx 20",
-  "data_validade": "2026-11-20",
-  "quantidade": 15
+  "itens": [
+    {
+      "codigo_barras": "7891000100103",
+      "nome": "Dipirona 500mg",
+      "data_validade": "2026-11-20",
+      "quantidade": 15
+    },
+    {
+      "codigo_barras": "7892000200204",
+      "nome": "Paracetamol 750mg",
+      "data_validade": "2027-02-10",
+      "quantidade": 30
+    }
+  ]
 }</pre>
               </div>
 
@@ -1838,20 +1848,105 @@
                 <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Exemplo de Resposta JSON (Status 200 OK):</span>
                 <pre class="bg-slate-950 p-3 rounded-xl border border-slate-800 font-mono text-[11px] text-emerald-300 overflow-x-auto leading-relaxed">{
   "success": true,
-  "operation": "INSERTED",
-  "tenant_id": "TNT-DSP01",
-  "lote_id": 1042,
-  "codigo_barras": "7891000100103",
-  "data_validade": "2026-11-20",
-  "quantidade_lote": 15,
-  "days_remaining": 10,
-  "action": "ALERTA_APROXIMACAO"
+  "lotes_recebidos": 2,
+  "mensagem": "Sincronização em lote concluída."
 }</pre>
               </div>
             </div>
           </div>
 
-          <!-- ROTA 2: GET /api/v1/products/alerts -->
+          <!-- ROTA 2: POST /api/vendas (Baixa em Cascata - FEFO) -->
+          <div class="bg-slate-900/60 border border-slate-700/80 rounded-2xl p-4 sm:p-5 space-y-3">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-2.5">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="bg-emerald-950 text-emerald-400 border border-emerald-700/60 px-2.5 py-1 rounded text-xs font-black font-mono">POST</span>
+                <span class="font-mono text-sm font-bold text-white">/api/vendas</span>
+                <span class="text-xs text-slate-400 font-medium sm:ml-2">Baixa em Cascata no Caixa (FEFO)</span>
+              </div>
+              <span class="text-[11px] text-emerald-400 font-semibold bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/40">Motor FEFO / REST</span>
+            </div>
+
+            <p class="text-xs text-slate-300 leading-relaxed">
+              Registra a saída de produtos (venda) no PDV. O motor utiliza a regra FEFO (First-Expire, First-Out) para abater automaticamente o saldo dos lotes com vencimento mais próximo.
+            </p>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+              <div>
+                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Payload JSON de Envio (Request Body):</span>
+                <pre class="bg-slate-950 p-3 rounded-xl border border-slate-800 font-mono text-[11px] text-slate-200 overflow-x-auto leading-relaxed">{
+  "codigo_barras": "7890001112223",
+  "quantidade_vendida": 5
+}</pre>
+              </div>
+
+              <div>
+                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Exemplo de Resposta JSON (Status 200 OK):</span>
+                <pre class="bg-slate-950 p-3 rounded-xl border border-slate-800 font-mono text-[11px] text-emerald-300 overflow-x-auto leading-relaxed">{
+  "success": true,
+  "codigo_barras": "7890001112223",
+  "quantidade_vendida": 5,
+  "lotes_atualizados": [
+    {
+      "lote_id": 101,
+      "data_validade": "2026-11-15",
+      "quantidade_anterior": 3,
+      "quantidade_abatida": 3,
+      "quantidade_restante": 0
+    },
+    {
+      "lote_id": 102,
+      "data_validade": "2026-12-01",
+      "quantidade_anterior": 5,
+      "quantidade_abatida": 2,
+      "quantidade_restante": 3
+    }
+  ]
+}</pre>
+              </div>
+            </div>
+          </div>
+
+          <!-- ROTA 3: PUT /api/lotes/ajuste (Ajuste Rápido de Inventário) -->
+          <div class="bg-slate-900/60 border border-slate-700/80 rounded-2xl p-4 sm:p-5 space-y-3">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-2.5">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="bg-amber-950 text-amber-400 border border-amber-700/60 px-2.5 py-1 rounded text-xs font-black font-mono">PUT</span>
+                <span class="font-mono text-sm font-bold text-white">/api/lotes/ajuste</span>
+                <span class="text-xs text-slate-400 font-medium sm:ml-2">Ajuste Rápido de Inventário (Auditoria)</span>
+              </div>
+              <span class="text-[11px] text-amber-400 font-semibold bg-amber-950/60 px-2 py-0.5 rounded border border-amber-800/40">Inventário / REST</span>
+            </div>
+
+            <p class="text-xs text-slate-300 leading-relaxed">
+              Ajusta o saldo físico de um lote específico diretamente no motor do VOKZO para calibrar os alertas de vencimento. Essa ação gera um histórico de movimentação para auditoria e não afeta o estoque do PDV externo.
+            </p>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+              <div>
+                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Payload JSON de Envio (Request Body):</span>
+                <pre class="bg-slate-950 p-3 rounded-xl border border-slate-800 font-mono text-[11px] text-slate-200 overflow-x-auto leading-relaxed">{
+  "lote_id": 402,
+  "nova_quantidade": 12,
+  "usuario_id": 8,
+  "motivo": "inventario_prateleira"
+}</pre>
+              </div>
+
+              <div>
+                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Exemplo de Resposta JSON (Status 200 OK):</span>
+                <pre class="bg-slate-950 p-3 rounded-xl border border-slate-800 font-mono text-[11px] text-emerald-300 overflow-x-auto leading-relaxed">{
+  "success": true,
+  "lote_id": 402,
+  "quantidade_anterior": 15,
+  "nova_quantidade": 12,
+  "diferenca": -3,
+  "motivo": "inventario_prateleira"
+}</pre>
+              </div>
+            </div>
+          </div>
+
+          <!-- ROTA 4: GET /api/v1/products/alerts -->
           <div class="bg-slate-900/60 border border-slate-700/80 rounded-2xl p-4 sm:p-5 space-y-3">
             <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-2.5">
               <div class="flex items-center gap-2 flex-wrap">
@@ -1897,66 +1992,6 @@
     }
   ]
 }</pre>
-            </div>
-          </div>
-
-          <!-- ROTA 3: POST /api/v1/products/checkout (BAIXA FIFO INTELIGENTE) -->
-          <div class="bg-slate-900/60 border border-amber-500/40 rounded-2xl p-4 sm:p-5 space-y-3 shadow-sm">
-            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-2.5">
-              <div class="flex items-center gap-2 flex-wrap">
-                <span class="bg-amber-950 text-amber-300 border border-amber-600/60 px-2.5 py-1 rounded text-xs font-black font-mono">POST</span>
-                <span class="font-mono text-sm font-bold text-white">/api/v1/products/checkout</span>
-                <span class="text-xs text-amber-300 font-bold sm:ml-2">Baixa de Estoque Inteligente (Venda/Descarte)</span>
-              </div>
-              <span class="text-[11px] text-amber-300 font-mono bg-amber-950/60 px-2 py-0.5 rounded border border-amber-700/50">Motor FIFO Automático</span>
-            </div>
-
-            <p class="text-xs text-slate-300 leading-relaxed">
-              Utilize esta rota toda vez que um produto passar no caixa ou for descartado. Não é necessário enviar a data de validade. O motor inteligente do VOKZO utiliza o método <strong class="text-amber-300">FIFO (First-In, First-Out)</strong>, buscando o lote ativo daquele código de barras e dando baixa automaticamente na unidade que estiver mais próxima do vencimento.
-            </p>
-
-            <!-- Headers Obrigatórios -->
-            <div class="bg-slate-950/90 border border-indigo-500/30 rounded-xl p-3 space-y-1.5">
-              <span class="text-[10px] font-bold text-indigo-300 uppercase tracking-wider block">Headers Obrigatórios (Autenticação):</span>
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 font-mono text-[11px]">
-                <div class="bg-slate-900 px-2.5 py-1.5 rounded-lg border border-slate-800 text-slate-200">
-                  <strong class="text-amber-400">x-api-key:</strong> <span class="text-slate-400">Sua Chave de API</span>
-                </div>
-                <div class="bg-slate-900 px-2.5 py-1.5 rounded-lg border border-slate-800 text-slate-200">
-                  <strong class="text-amber-400">x-tenant-id:</strong> <span class="text-slate-400">ID da Loja</span>
-                </div>
-              </div>
-            </div>
-
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
-              <div>
-                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Body (JSON):</span>
-                <pre class="bg-slate-950 p-3 rounded-xl border border-slate-800 font-mono text-[11px] text-slate-200 overflow-x-auto leading-relaxed">{
-  "codigo_barras": "7891010101010",
-  "quantidade_vendida": 2
-}</pre>
-              </div>
-
-              <div>
-                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Exemplo de Resposta JSON (Status 200 OK):</span>
-                <pre class="bg-slate-950 p-3 rounded-xl border border-slate-800 font-mono text-[11px] text-emerald-300 overflow-x-auto leading-relaxed">{
-  "success": true,
-  "tenant_id": "TNT-DSP01",
-  "codigo_barras": "7891010101010",
-  "quantidade_solicitada": 2,
-  "quantidade_baixada": 2,
-  "saldo_nao_atendido": 0,
-  "lotes_afetados": [
-    {
-      "lote_id": 14,
-      "data_validade": "2026-11-18",
-      "quantidade_baixada": 2,
-      "quantidade_restante": 4,
-      "acao": "UPDATE_PARCIAL"
-    }
-  ]
-}</pre>
-              </div>
             </div>
           </div>
 
@@ -4214,6 +4249,87 @@
           Fechar
         </button>
       </div>
+    </div>
+  </div>
+
+  <!-- MODAL: AJUSTE RÁPIDO DE INVENTÁRIO (APENAS MOTOR DE ALERTAS VOKZO) -->
+  <div
+    id="modal-quick-inventory-adjust"
+    onclick="if (event.target === this) closeQuickInventoryModal()"
+    class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm overflow-y-auto hidden"
+  >
+    <div class="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden my-auto max-h-[92vh] flex flex-col">
+      <div class="bg-gradient-to-r from-emerald-950 via-slate-900 to-emerald-900 text-white p-3.5 sm:p-4 flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2.5 min-w-0">
+          <span class="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-300 flex items-center justify-center text-base shrink-0">✏️</span>
+          <div class="min-w-0">
+            <h3 class="font-extrabold text-sm text-white truncate">Ajuste Rápido de Inventário</h3>
+            <p class="text-[11px] text-slate-300 truncate">Calibração interna de alertas (não altera PDV externo)</p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onclick="closeQuickInventoryModal()"
+          class="w-8 h-8 rounded-xl bg-white/10 hover:bg-white/20 text-white text-lg font-bold leading-none flex items-center justify-center cursor-pointer shrink-0"
+          aria-label="Fechar"
+        >&times;</button>
+      </div>
+
+      <form onsubmit="submitQuickInventoryAdjustment(event); return false;" class="p-4 space-y-3.5 text-xs">
+        <input type="hidden" id="quick-inv-lote-id" value="">
+        <input type="hidden" id="quick-inv-product-id" value="">
+
+        <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-1.5">
+          <div>
+            <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Produto</span>
+            <span id="quick-inv-product-name" class="text-sm font-black text-slate-900 block">-</span>
+          </div>
+          <div class="flex flex-wrap items-center gap-x-4 gap-y-1 pt-1 border-t border-slate-200/80 text-[11px] text-slate-600">
+            <span>📅 Validade: <strong id="quick-inv-expiry" class="text-slate-900">-</strong></span>
+            <span>🏷️ Lote: <strong id="quick-inv-batch" class="text-slate-900 uppercase font-mono">-</strong></span>
+          </div>
+        </div>
+
+        <div class="bg-emerald-50 border border-emerald-200 rounded-xl px-3.5 py-2.5 flex items-center justify-between">
+          <span class="text-xs font-bold text-emerald-900">Saldo atual no alerta:</span>
+          <span id="quick-inv-current-qty" class="text-sm font-black font-mono text-emerald-800 bg-white border border-emerald-300 px-2.5 py-0.5 rounded-lg">0</span>
+        </div>
+
+        <div>
+          <label for="quick-inv-new-qty" class="block text-xs font-bold text-slate-700 mb-1.5">
+            Nova Qtd Física na Prateleira *
+          </label>
+          <input
+            id="quick-inv-new-qty"
+            type="number"
+            inputmode="numeric"
+            min="0"
+            step="1"
+            required
+            placeholder="Ex: 12"
+            class="w-full text-base sm:text-sm font-bold border border-slate-300 bg-white rounded-xl px-3.5 py-2.5 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+          >
+        </div>
+
+        <div id="quick-inv-error" class="hidden text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2"></div>
+
+        <div class="pt-2 border-t border-slate-100 flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onclick="closeQuickInventoryModal()"
+            class="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 font-bold hover:bg-slate-50 transition cursor-pointer"
+          >
+            Cancelar
+          </button>
+          <button
+            type="submit"
+            id="quick-inv-save-btn"
+            class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold shadow-xs transition cursor-pointer active:scale-95"
+          >
+            Salvar Ajuste
+          </button>
+        </div>
+      </form>
     </div>
   </div>
 
@@ -8022,6 +8138,117 @@ let currentCheckoutOptions = null;
     }
     window.handleBulkDelete = handleBulkDelete;
 
+    function openQuickInventoryModalForItem(productId) {
+      const p = (appState.products || []).find(x => String(x.id) === String(productId) || String(x.lote_id) === String(productId));
+      if (!p) return;
+
+      const modal = document.getElementById('modal-quick-inventory-adjust');
+      const loteId = p.lote_id || p.id;
+      const currentQty = Number(p.qty !== undefined ? p.qty : (p.quantity !== undefined ? p.quantity : (p.quantidade !== undefined ? p.quantidade : 0)));
+
+      document.getElementById('quick-inv-lote-id').value = String(loteId);
+      document.getElementById('quick-inv-product-id').value = String(p.id);
+      document.getElementById('quick-inv-product-name').innerText = p.name || 'Produto';
+      document.getElementById('quick-inv-expiry').innerText = formatDate(p.expiry);
+      document.getElementById('quick-inv-batch').innerText = p.batch || p.lote || 'Único';
+      document.getElementById('quick-inv-current-qty').innerText = `${currentQty} un.`;
+
+      const newQtyInput = document.getElementById('quick-inv-new-qty');
+      const errEl = document.getElementById('quick-inv-error');
+      if (errEl) errEl.classList.add('hidden');
+      if (newQtyInput) newQtyInput.value = String(currentQty);
+
+      if (modal) modal.classList.remove('hidden');
+      if (newQtyInput) setTimeout(() => { newQtyInput.focus(); newQtyInput.select(); }, 80);
+    }
+    window.openQuickInventoryModalForItem = openQuickInventoryModalForItem;
+
+    function closeQuickInventoryModal() {
+      const modal = document.getElementById('modal-quick-inventory-adjust');
+      if (modal) modal.classList.add('hidden');
+    }
+    window.closeQuickInventoryModal = closeQuickInventoryModal;
+
+    async function submitQuickInventoryAdjustment(e) {
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      const loteIdRaw = document.getElementById('quick-inv-lote-id')?.value || '';
+      const productId = document.getElementById('quick-inv-product-id')?.value || '';
+      const newQtyRaw = document.getElementById('quick-inv-new-qty')?.value;
+      const errEl = document.getElementById('quick-inv-error');
+      const saveBtn = document.getElementById('quick-inv-save-btn');
+
+      const novaQuantidade = Number(newQtyRaw);
+      if (!loteIdRaw || !Number.isFinite(novaQuantidade) || novaQuantidade < 0) {
+        if (errEl) {
+          errEl.innerText = 'Informe uma quantidade física válida (>= 0).';
+          errEl.classList.remove('hidden');
+        }
+        return false;
+      }
+
+      if (errEl) errEl.classList.add('hidden');
+      const user = appState.currentUser || {};
+      const usuarioId = String(user.id || user.phone || user.name || 'lojista').trim();
+
+      if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.innerText = 'Salvando...';
+      }
+
+      try {
+        // Ajuste estritamente interno no VOKZO (sem webhook ou envio para PDV externo)
+        const res = await fetch('/api/lotes/ajuste', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'bypass-tunnel-reminder': 'true',
+            'Bypass-Tunnel-Reminder': '1'
+          },
+          body: JSON.stringify({
+            lote_id: /^\d+$/.test(loteIdRaw) ? Number(loteIdRaw) : loteIdRaw,
+            nova_quantidade: novaQuantidade,
+            usuario_id: usuarioId,
+            motivo: 'inventario_prateleira'
+          })
+        });
+
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || `Erro HTTP ${res.status}`);
+        }
+
+        const prod = (appState.products || []).find(x => String(x.id) === String(productId) || String(x.lote_id) === String(loteIdRaw));
+        if (prod) {
+          prod.qty = novaQuantidade;
+          if (prod.quantity !== undefined) prod.quantity = novaQuantidade;
+          if (prod.quantidade !== undefined) prod.quantidade = novaQuantidade;
+        }
+
+        const qtyEl = document.getElementById(`alert-qty-${productId}`);
+        if (qtyEl) qtyEl.innerText = `${novaQuantidade} un.`;
+
+        saveState({ skipServerSync: true });
+        renderProducts();
+        closeQuickInventoryModal();
+        showToast('✅ Estoque ajustado no VOKZO!');
+      } catch (err) {
+        if (errEl) {
+          errEl.innerText = 'Erro ao salvar ajuste: ' + err.message;
+          errEl.classList.remove('hidden');
+        }
+      } finally {
+        if (saveBtn) {
+          saveBtn.disabled = false;
+          saveBtn.innerText = 'Salvar Ajuste';
+        }
+      }
+      return false;
+    }
+    window.submitQuickInventoryAdjustment = submitQuickInventoryAdjustment;
+
     function renderProducts() {
       const profile = getCurrentStoreProfile();
       const isFarmacia = (profile.nicheMode === 'farmacia');
@@ -8093,7 +8320,9 @@ let currentCheckoutOptions = null;
         const isCapitalParado = (activeFilter === 'parado');
         const idleDays = getProductIdleDays(item);
         const isSelected = selectedProductIds.includes(String(item.id));
-        const itemQty = parseInt(item.qty !== undefined ? item.qty : (item.quantity !== undefined ? item.quantity : (item.quantidade !== undefined ? item.quantidade : 1)), 10) || 1;
+        const rawQtyVal = Number(item.qty !== undefined ? item.qty : (item.quantity !== undefined ? item.quantity : (item.quantidade !== undefined ? item.quantidade : 1)));
+        const itemQty = Number.isFinite(rawQtyVal) ? rawQtyVal : 1;
+        const safeItemId = String(item.id).replace(/'/g, "\\'");
 
         // Identidade Visual Exclusiva para a aba "Capital Parado"
         if (isCapitalParado) {
@@ -8110,7 +8339,7 @@ let currentCheckoutOptions = null;
                   <div class="text-slate-500 text-[10px] sm:text-[11px] flex items-center gap-1.5 sm:gap-2 flex-wrap">
                     <span>Lote: <strong class="text-slate-700 uppercase font-mono">${item.batch || 'Único'}</strong></span>
                     <span>&bull;</span>
-                    <span>Qtd: <strong class="text-slate-800 font-mono">${itemQty} un.</strong></span>
+                    <span>Qtd: <strong id="alert-qty-${item.id}" class="text-slate-800 font-mono">${itemQty} un.</strong></span>
                     <span>&bull;</span>
                     <span>Vence: <strong class="text-slate-700">${formatDate(item.expiry)}</strong></span>
                     <span>&bull;</span>
@@ -8119,6 +8348,16 @@ let currentCheckoutOptions = null;
                 </div>
               </div>
               <div class="flex items-center gap-1.5 shrink-0 flex-wrap sm:flex-nowrap justify-end">
+                <button
+                  type="button"
+                  onclick="event.stopPropagation(); openQuickInventoryModalForItem('${safeItemId}')"
+                  class="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 font-extrabold text-[11px] rounded-xl shadow-2xs transition cursor-pointer flex items-center gap-1 active:scale-95"
+                  title="Ajustar saldo deste alerta no VOKZO"
+                >
+                  <span>✏️</span>
+                  <span class="hidden sm:inline">Ajustar Saldo</span>
+                  <span class="sm:hidden">Ajustar</span>
+                </button>
                 <button 
                   type="button" 
                   onclick="event.stopPropagation(); openUrgentActionsDrawer(${item.id})" 
@@ -8203,6 +8442,16 @@ let currentCheckoutOptions = null;
         const actionHtml = isUrgent
           ? `
             <div class="flex items-center gap-1.5 shrink-0 flex-wrap sm:flex-nowrap justify-end">
+              <button
+                type="button"
+                onclick="event.stopPropagation(); openQuickInventoryModalForItem('${safeItemId}')"
+                class="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 font-extrabold text-[11px] rounded-xl shadow-2xs transition cursor-pointer flex items-center gap-1 active:scale-95"
+                title="Ajustar saldo deste alerta no VOKZO"
+              >
+                <span>✏️</span>
+                <span class="hidden sm:inline">Ajustar Saldo</span>
+                <span class="sm:hidden">Ajustar</span>
+              </button>
               <button 
                 type="button" 
                 onclick="event.stopPropagation(); openUrgentActionsDrawer(${item.id})" 
@@ -8234,6 +8483,16 @@ let currentCheckoutOptions = null;
           `
           : `
             <div class="flex items-center gap-1.5 shrink-0 flex-wrap sm:flex-nowrap justify-end">
+              <button
+                type="button"
+                onclick="event.stopPropagation(); openQuickInventoryModalForItem('${safeItemId}')"
+                class="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 font-extrabold text-[11px] rounded-xl shadow-2xs transition cursor-pointer flex items-center gap-1 active:scale-95"
+                title="Ajustar saldo deste alerta no VOKZO"
+              >
+                <span>✏️</span>
+                <span class="hidden sm:inline">Ajustar Saldo</span>
+                <span class="sm:hidden">Ajustar</span>
+              </button>
               <button 
                 type="button" 
                 onclick="event.stopPropagation(); resolveItem('${item.id}')" 
@@ -8269,7 +8528,7 @@ let currentCheckoutOptions = null;
                 <div class="text-slate-500 text-[10px] sm:text-[11px] flex items-center gap-1.5 sm:gap-2 flex-wrap">
                   <span>Lote: <strong class="text-slate-700 uppercase font-mono">${item.batch || 'Único'}</strong></span>
                   <span>&bull;</span>
-                  <span>Qtd: <strong class="text-slate-800 font-mono">${itemQty} un.</strong></span>
+                  <span>Qtd: <strong id="alert-qty-${item.id}" class="text-slate-800 font-mono">${itemQty} un.</strong></span>
                   <span>&bull;</span>
                   <span>Vence: <strong class="text-slate-700">${formatDate(item.expiry)}</strong></span>
                 </div>
